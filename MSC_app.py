@@ -3006,7 +3006,7 @@ with tab1:
     # =========================================================
     st.markdown("---")
 
-    col_p1, col_p2 = st.columns([2, 3])
+    col_p1, col_p2 = st.columns([3, 2])
     with col_p1:
         save_players_github_clicked = st.button("✅ 선수정보 저장", use_container_width=True, key="btn_save_players_github")
 
@@ -6360,6 +6360,7 @@ with tab3:
                 )
 
 
+                st.markdown("---")
 
                 col_a, col_b = st.columns([3, 2])
                 with col_a:
