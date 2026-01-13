@@ -2390,24 +2390,86 @@ st.markdown(MOBILE_LANDSCAPE, unsafe_allow_html=True)
 
 BUTTON_CSS = """
 <style>
-/* ✅ 기본(민트) 버튼: danger 래퍼 안은 제외 */
-div[data-testid="stButton"]:not(.main-danger-btn) > button,
-div[data-testid="stButton"]:not(.main-primary-btn):not(.main-danger-btn):not(.main-secondary-btn) > button {
-    background-color: #5fcdb2 !important;
+/* =========================================================
+   ✅ 버튼 컬러 팔레트 (4종)
+   - 기본: 민트
+   - 래퍼(div class=...)로 색상 오버라이드
+     * main-primary-btn   : 민트
+     * main-danger-btn    : 빨강
+     * main-secondary-btn : 파랑
+     * main-warning-btn   : 주황
+   ========================================================= */
+
+:root{
+  --btn-mint:#5fcdb2;
+  --btn-mint-hover:#55c4aa;
+
+  --btn-red:#ef4444;
+  --btn-red-hover:#dc2626;
+
+  --btn-blue:#3b82f6;
+  --btn-blue-hover:#2563eb;
+
+  --btn-orange:#f59e0b;
+  --btn-orange-hover:#d97706;
+}
+
+/* ✅ 기본 버튼(민트) */
+div[data-testid="stButton"] > button {
+    background-color: var(--btn-mint) !important;
     color: #ffffff !important;
     font-weight: 600 !important;
     border: none !important;
     border-radius: 10px !important;
     padding: 10px 0 !important;
-    transition: all 0.12s ease-out;
+    transition: all 0.12s ease-out !important;
 }
-div[data-testid="stButton"]:not(.main-danger-btn) > button:hover {
+div[data-testid="stButton"] > button:hover {
     filter: brightness(1.06) !important;
-    transform: translateY(-1px);
+    transform: translateY(-1px) !important;
+}
+div[data-testid="stButton"] > button:active {
+    transform: translateY(1px) !important;
+}
+
+/* ✅ 민트(명시) */
+.main-primary-btn div[data-testid="stButton"] > button {
+    background-color: var(--btn-mint) !important;
+}
+.main-primary-btn div[data-testid="stButton"] > button:hover {
+    background-color: var(--btn-mint-hover) !important;
+    filter: none !important;
+}
+
+/* ✅ 빨강 */
+.main-danger-btn div[data-testid="stButton"] > button {
+    background-color: var(--btn-red) !important;
+}
+.main-danger-btn div[data-testid="stButton"] > button:hover {
+    background-color: var(--btn-red-hover) !important;
+    filter: none !important;
+}
+
+/* ✅ 파랑 */
+.main-secondary-btn div[data-testid="stButton"] > button {
+    background-color: var(--btn-blue) !important;
+}
+.main-secondary-btn div[data-testid="stButton"] > button:hover {
+    background-color: var(--btn-blue-hover) !important;
+    filter: none !important;
+}
+
+/* ✅ 주황 */
+.main-warning-btn div[data-testid="stButton"] > button {
+    background-color: var(--btn-orange) !important;
+}
+.main-warning-btn div[data-testid="stButton"] > button:hover {
+    background-color: var(--btn-orange-hover) !important;
+    filter: none !important;
 }
 
 @media (max-width: 768px) {
-    div[data-testid="stButton"]:not(.main-danger-btn) > button {
+    div[data-testid="stButton"] > button {
         font-size: 0.95rem !important;
         padding-top: 0.6rem !important;
         padding-bottom: 0.6rem !important;
@@ -2416,6 +2478,7 @@ div[data-testid="stButton"]:not(.main-danger-btn) > button:hover {
 </style>
 """
 st.markdown(BUTTON_CSS, unsafe_allow_html=True)
+
 
 
 
@@ -6055,12 +6118,27 @@ with tab3:
 
                 # 실제 게임들
                 for local_no, (idx, gtype, t1, t2, court) in enumerate(game_list, start=1):
+
+                    # ✅ 같은 라운드(코트1/2/...) 사이에는 경계선(구분선) 제거: 코트 1에서만 선 표시
+                    try:
+                        _court_s = str(court).strip() if court is not None else ""
+                        _digits = "".join([ch for ch in _court_s if ch.isdigit()])
+                        _court_i = int(_digits) if _digits else None
+                    except Exception:
+                        _court_i = None
+
+                    _show_sep = True
+                    if _court_i is not None and _court_i != 1:
+                        _show_sep = False
+
+                    _sep_css = "border-top:1px solid #e5e7eb;" if _show_sep else "border-top:none;"
+                    _top_css = "margin-top:0.6rem; padding-top:0.4rem;" if _show_sep else "margin-top:0.25rem; padding-top:0.15rem;"
+
                     st.markdown(
                         f"""
                         <div style="
-                            margin-top:0.6rem;
-                            padding-top:0.4rem;
-                            border-top:1px solid #e5e7eb;
+                            {_top_css}
+                            {_sep_css}
                             margin-bottom:0.18rem;
                         ">
                             <span style="font-weight:600; font-size:0.96rem;">
@@ -6073,6 +6151,7 @@ with tab3:
                         """,
                         unsafe_allow_html=True,
                     )
+
 
                     # 저장돼 있던 값
                     res = results.get(str(idx)) or results.get(idx) or {}
