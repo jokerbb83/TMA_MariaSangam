@@ -6361,7 +6361,7 @@ with tab3:
 
 
 
-                col_a, col_b = st.columns([2, 3])
+                col_a, col_b = st.columns([3, 2])
                 with col_a:
                     save_to_github_clicked = st.button("✅ 경기기록 저장", use_container_width=True)
             
@@ -6384,7 +6384,6 @@ with tab3:
                             commit_message="Save match sessions from Streamlit",
                         )
                         st.success("저장 완료! (커밋 생성됨)")
-                        st.caption(f"저장 위치: {repo} / {branch} / {file_path}")
             
                     except Exception as e:
                         st.error(f"저장 실패: {e}")
