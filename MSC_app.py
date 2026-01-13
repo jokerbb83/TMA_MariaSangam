@@ -5701,40 +5701,6 @@ with tab3:
     st.markdown("---")
 
 
-    col_a, col_b = st.columns([2, 3])
-    with col_a:
-        save_to_github_clicked = st.button("✅ 경기기록 저장", use_container_width=True)
-
-    with col_b:
-        st.caption("경기기록 생성과 수정후 꼭 버튼을 눌러주세요. 안 누르면 다 날아갑니다.저~멀리")
-
-    if save_to_github_clicked:
-        try:
-            sessions = st.session_state.get("sessions", {})
-            if not isinstance(sessions, dict):
-                sessions = {}
-
-            file_path = st.secrets.get("GITHUB_FILE_PATH", "MSC_sessions.json")
-            repo = st.secrets.get("GITHUB_REPO", "")
-            branch = st.secrets.get("GITHUB_BRANCH", "main")
-
-            res = github_upsert_json_file(
-                file_path=file_path,
-                new_data=sessions,
-                commit_message="Save match sessions from Streamlit",
-            )
-            st.success("저장 완료! (커밋 생성됨)")
-            st.caption(f"저장 위치: {repo} / {branch} / {file_path}")
-
-        except Exception as e:
-            st.error(f"저장 실패: {e}")
-            st.info(
-                "404가 계속 뜨면 보통 아래 중 하나야:\n"
-                "1) GITHUB_REPO 오타(아이디/레포)\n"
-                "2) GITHUB_FILE_PATH 경로 틀림(data/..)\n"
-                "3) GITHUB_BRANCH가 main이 아님(master 등)\n"
-                "4) 토큰 권한 부족(private repo면 특히)\n"
-            )
 
 
 
@@ -6349,6 +6315,10 @@ with tab3:
             # -----------------------------
 
 
+
+
+
+
             warnings = detect_score_warnings(day_data)
 
             if warnings:
@@ -6388,6 +6358,39 @@ with tab3:
                     """,
                     unsafe_allow_html=True,
                 )
+
+
+
+                col_a, col_b = st.columns([2, 3])
+                with col_a:
+                    save_to_github_clicked = st.button("✅ 경기기록 저장", use_container_width=True)
+            
+                with col_b:
+                    st.caption("경기기록 생성과 수정후 꼭 버튼을 눌러주세요. 안 누르면 다 날아갑니다.저~멀리")
+            
+                if save_to_github_clicked:
+                    try:
+                        sessions = st.session_state.get("sessions", {})
+                        if not isinstance(sessions, dict):
+                            sessions = {}
+            
+                        file_path = st.secrets.get("GITHUB_FILE_PATH", "MSC_sessions.json")
+                        repo = st.secrets.get("GITHUB_REPO", "")
+                        branch = st.secrets.get("GITHUB_BRANCH", "main")
+            
+                        res = github_upsert_json_file(
+                            file_path=file_path,
+                            new_data=sessions,
+                            commit_message="Save match sessions from Streamlit",
+                        )
+                        st.success("저장 완료! (커밋 생성됨)")
+                        st.caption(f"저장 위치: {repo} / {branch} / {file_path}")
+            
+                    except Exception as e:
+                        st.error(f"저장 실패: {e}")
+ 
+
+
 
             # =====================================================
             # 2. 오늘의 요약 리포트 (자동 생성)
