@@ -189,7 +189,7 @@ components.html("""
 
 
 # ---------------------------------------------------------
-# ✅ Streamlit 상/하단 크레딧/툴바 숨김 + 라이트 고정 CSS (한 방)
+# ✅ Streamlit 상/하단 크레딧/툴바 숨김 CSS (한 방)
 # ---------------------------------------------------------
 st.markdown("""
 <style>
@@ -204,76 +204,9 @@ div[data-testid="stDecoration"] {visibility: hidden !important;}
 div[data-testid="stStatusWidget"] {visibility: hidden !important;}
 .stDeployButton {display: none !important;}
 
-/* ✅ 라이트 모드 강제 */
-:root { color-scheme: light !important; }
-html, body, [data-testid="stAppViewContainer"] {
-  background: #ffffff !important;
-  color: #111827 !important;
-}
-
-/* 입력 UI 흰색 고정 */
-input, textarea, select {
-  background-color: #ffffff !important;
-  color: #111827 !important;
-}
-[data-testid="stSelectbox"] > div > div,
-[data-testid="stMultiSelect"] > div > div,
-[data-testid="stNumberInput"] > div > div:first-child,
-[data-testid="stTextInput"] > div > div,
-div[role="combobox"],
-div[role="spinbutton"],
-[data-baseweb="select"],
-[data-baseweb="input"] {
-  background-color: #ffffff !important;
-  color: #111827 !important;
-  border: 1px solid #e5e7eb !important;
-}
-
-/* 드롭다운/달력/팝오버(카톡 인앱에서 까매지는 부분) */
-div[data-baseweb="popover"],
-div[data-baseweb="menu"],
-ul[role="listbox"], div[role="listbox"]{
-  background: #ffffff !important;
-  color: #111827 !important;
-  border: 1px solid rgba(0,0,0,0.08) !important;
-}
-div[data-baseweb="popover"] *,
-div[data-baseweb="menu"] *,
-ul[role="listbox"] *,
-div[role="listbox"] * {
-  color: #111827 !important;
-}
-
-/* 선택/호버 */
-div[data-baseweb="menu"] div[role="option"][aria-selected="true"],
-ul[role="listbox"] li[aria-selected="true"]{
-  background: #f3f4f6 !important;
-}
-div[data-baseweb="menu"] div[role="option"]:hover,
-ul[role="listbox"] li:hover{
-  background: #e5e7eb !important;
-}
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------------------------------------------------
-# ✅ 카톡 인앱브라우저 다크모드 “메타”까지 라이트로 고정 (보조)
-# ---------------------------------------------------------
-components.html("""
-<script>
-(function () {
-  const doc = window.parent?.document || document;
-
-  function upsertMeta(name, content){
-    let m = doc.querySelector(`meta[name="${name}"]`);
-    if(!m){ m = doc.createElement("meta"); m.setAttribute("name", name); doc.head.appendChild(m); }
-    m.setAttribute("content", content);
-  }
-  upsertMeta("color-scheme", "light");
-  upsertMeta("supported-color-schemes", "light");
-})();
-</script>
-""", height=0)
 
 
 
@@ -2390,86 +2323,24 @@ st.markdown(MOBILE_LANDSCAPE, unsafe_allow_html=True)
 
 BUTTON_CSS = """
 <style>
-/* =========================================================
-   ✅ 버튼 컬러 팔레트 (4종)
-   - 기본: 민트
-   - 래퍼(div class=...)로 색상 오버라이드
-     * main-primary-btn   : 민트
-     * main-danger-btn    : 빨강
-     * main-secondary-btn : 파랑
-     * main-warning-btn   : 주황
-   ========================================================= */
-
-:root{
-  --btn-mint:#5fcdb2;
-  --btn-mint-hover:#55c4aa;
-
-  --btn-red:#ef4444;
-  --btn-red-hover:#dc2626;
-
-  --btn-blue:#3b82f6;
-  --btn-blue-hover:#2563eb;
-
-  --btn-orange:#f59e0b;
-  --btn-orange-hover:#d97706;
-}
-
-/* ✅ 기본 버튼(민트) */
-div[data-testid="stButton"] > button {
-    background-color: var(--btn-mint) !important;
+/* ✅ 기본(민트) 버튼: danger 래퍼 안은 제외 */
+div[data-testid="stButton"]:not(.main-danger-btn) > button,
+div[data-testid="stButton"]:not(.main-primary-btn):not(.main-danger-btn):not(.main-secondary-btn) > button {
+    background-color: #5fcdb2 !important;
     color: #ffffff !important;
     font-weight: 600 !important;
     border: none !important;
     border-radius: 10px !important;
     padding: 10px 0 !important;
-    transition: all 0.12s ease-out !important;
+    transition: all 0.12s ease-out;
 }
-div[data-testid="stButton"] > button:hover {
+div[data-testid="stButton"]:not(.main-danger-btn) > button:hover {
     filter: brightness(1.06) !important;
-    transform: translateY(-1px) !important;
-}
-div[data-testid="stButton"] > button:active {
-    transform: translateY(1px) !important;
-}
-
-/* ✅ 민트(명시) */
-.main-primary-btn div[data-testid="stButton"] > button {
-    background-color: var(--btn-mint) !important;
-}
-.main-primary-btn div[data-testid="stButton"] > button:hover {
-    background-color: var(--btn-mint-hover) !important;
-    filter: none !important;
-}
-
-/* ✅ 빨강 */
-.main-danger-btn div[data-testid="stButton"] > button {
-    background-color: var(--btn-red) !important;
-}
-.main-danger-btn div[data-testid="stButton"] > button:hover {
-    background-color: var(--btn-red-hover) !important;
-    filter: none !important;
-}
-
-/* ✅ 파랑 */
-.main-secondary-btn div[data-testid="stButton"] > button {
-    background-color: var(--btn-blue) !important;
-}
-.main-secondary-btn div[data-testid="stButton"] > button:hover {
-    background-color: var(--btn-blue-hover) !important;
-    filter: none !important;
-}
-
-/* ✅ 주황 */
-.main-warning-btn div[data-testid="stButton"] > button {
-    background-color: var(--btn-orange) !important;
-}
-.main-warning-btn div[data-testid="stButton"] > button:hover {
-    background-color: var(--btn-orange-hover) !important;
-    filter: none !important;
+    transform: translateY(-1px);
 }
 
 @media (max-width: 768px) {
-    div[data-testid="stButton"] > button {
+    div[data-testid="stButton"]:not(.main-danger-btn) > button {
         font-size: 0.95rem !important;
         padding-top: 0.6rem !important;
         padding-bottom: 0.6rem !important;
@@ -2478,7 +2349,6 @@ div[data-testid="stButton"] > button:active {
 </style>
 """
 st.markdown(BUTTON_CSS, unsafe_allow_html=True)
-
 
 
 
@@ -6118,27 +5988,12 @@ with tab3:
 
                 # 실제 게임들
                 for local_no, (idx, gtype, t1, t2, court) in enumerate(game_list, start=1):
-
-                    # ✅ 같은 라운드(코트1/2/...) 사이에는 경계선(구분선) 제거: 코트 1에서만 선 표시
-                    try:
-                        _court_s = str(court).strip() if court is not None else ""
-                        _digits = "".join([ch for ch in _court_s if ch.isdigit()])
-                        _court_i = int(_digits) if _digits else None
-                    except Exception:
-                        _court_i = None
-
-                    _show_sep = True
-                    if _court_i is not None and _court_i != 1:
-                        _show_sep = False
-
-                    _sep_css = "border-top:1px solid #e5e7eb;" if _show_sep else "border-top:none;"
-                    _top_css = "margin-top:0.6rem; padding-top:0.4rem;" if _show_sep else "margin-top:0.25rem; padding-top:0.15rem;"
-
                     st.markdown(
                         f"""
                         <div style="
-                            {_top_css}
-                            {_sep_css}
+                            margin-top:0.6rem;
+                            padding-top:0.4rem;
+                            border-top:1px solid #e5e7eb;
                             margin-bottom:0.18rem;
                         ">
                             <span style="font-weight:600; font-size:0.96rem;">
@@ -6151,7 +6006,6 @@ with tab3:
                         """,
                         unsafe_allow_html=True,
                     )
-
 
                     # 저장돼 있던 값
                     res = results.get(str(idx)) or results.get(idx) or {}
@@ -6696,7 +6550,8 @@ with tab3:
                             출력 포맷:
                               1게임.1코트 A,B vs C,D
                               1게임.2코트 E,F vs G,H
-
+                              쉬는사람: X,Y
+                              
                               2게임.1코트 ...
                               2게임.2코트 ...
                             """
@@ -6714,22 +6569,49 @@ with tab3:
                             if court_count <= 0:
                                 court_count = 1
 
-                            lines = []
-                            prev_round = None
+                            # 오늘 전체 참가자(대진 전체에서 수집) - 등장 순서 유지
+                            all_players_ordered = []
+                            _seen = set()
+                            for _gt, _t1, _t2, _c in schedule_list:
+                                for _p in list(_t1) + list(_t2):
+                                    _pc = re.sub(r"<[^>]*>", "", str(_p)).strip()
+                                    if not _pc:
+                                        continue
+                                    if _pc not in _seen:
+                                        _seen.add(_pc)
+                                        all_players_ordered.append(_pc)
 
-                            for i, (gtype, t1, t2, court) in enumerate(schedule_list):
+                            # 라운드별로 묶기
+                            rounds = {}  # round_no -> [(court_no, t1, t2), ...]
+                            for i, (_gt, _t1, _t2, _court) in enumerate(schedule_list):
                                 round_no = (i // court_count) + 1
-
                                 try:
-                                    court_no = int(court)
+                                    court_no = int(_court)
                                 except Exception:
                                     court_no = (i % court_count) + 1
+                                rounds.setdefault(round_no, []).append((court_no, _t1, _t2))
 
-                                if prev_round is not None and round_no != prev_round:
-                                    lines.append("")  # ✅ 게임 바뀌면 빈 줄 1개(=두줄 띄기 효과)
+                            lines = []
+                            last_round = max(rounds.keys()) if rounds else 1
 
-                                lines.append(f"{round_no}게임.{court_no}코트 {_team_join(t1)} vs {_team_join(t2)}")
-                                prev_round = round_no
+                            for r in sorted(rounds.keys()):
+                                used = set()
+                                for court_no, t1, t2 in rounds[r]:
+                                    lines.append(f"{r}게임.{court_no}코트 {_team_join(t1)} vs {_team_join(t2)}")
+                                    for _p in list(t1) + list(t2):
+                                        _pc = re.sub(r"<[^>]*>", "", str(_p)).strip()
+                                        if _pc:
+                                            used.add(_pc)
+
+                                rest = [p for p in all_players_ordered if p not in used]
+                                if rest:
+                                    lines.append(f"쉬는사람: {','.join(rest)}")
+                                else:
+                                    lines.append("쉬는사람: 없음")
+
+                                # ✅ 게임(라운드) 바뀌면 한 칸 띄우기
+                                if r != last_round:
+                                    lines.append("")
 
                             return "\n".join(lines).strip()
 
