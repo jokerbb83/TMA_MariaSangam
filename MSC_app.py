@@ -5698,13 +5698,6 @@ mobile_mode = st.session_state.get("mobile_mode", False)
 with tab3:
     section_card("경기 기록 / 통계", "📊")
 
-    st.markdown("---")
-
-
-
-
-
-
     if not sessions:
         st.info("저장된 경기 기록이 없습니다.")
     else:
@@ -6360,34 +6353,34 @@ with tab3:
                 )
 
 
-                st.markdown("---")
+            st.markdown("---")
 
-                col_a, col_b = st.columns([3, 2])
-                with col_a:
-                    save_to_github_clicked = st.button("✅ 경기기록 저장", use_container_width=True)
-            
-                with col_b:
-                    st.caption("경기기록 생성과 수정후 꼭 버튼을 눌러주세요. 안 누르면 다 날아갑니다.저~멀리")
-            
-                if save_to_github_clicked:
-                    try:
-                        sessions = st.session_state.get("sessions", {})
-                        if not isinstance(sessions, dict):
-                            sessions = {}
-            
-                        file_path = st.secrets.get("GITHUB_FILE_PATH", "MSC_sessions.json")
-                        repo = st.secrets.get("GITHUB_REPO", "")
-                        branch = st.secrets.get("GITHUB_BRANCH", "main")
-            
-                        res = github_upsert_json_file(
-                            file_path=file_path,
-                            new_data=sessions,
-                            commit_message="Save match sessions from Streamlit",
-                        )
-                        st.success("저장 완료! (커밋 생성됨)")
-            
-                    except Exception as e:
-                        st.error(f"저장 실패: {e}")
+            col_a, col_b = st.columns([3, 2])
+            with col_a:
+                save_to_github_clicked = st.button("✅ 경기기록 저장", use_container_width=True)
+        
+            with col_b:
+                st.caption("경기기록 생성과 수정후 꼭 버튼을 눌러주세요. 안 누르면 다 날아갑니다.저~멀리")
+        
+            if save_to_github_clicked:
+                try:
+                    sessions = st.session_state.get("sessions", {})
+                    if not isinstance(sessions, dict):
+                        sessions = {}
+        
+                    file_path = st.secrets.get("GITHUB_FILE_PATH", "MSC_sessions.json")
+                    repo = st.secrets.get("GITHUB_REPO", "")
+                    branch = st.secrets.get("GITHUB_BRANCH", "main")
+        
+                    res = github_upsert_json_file(
+                        file_path=file_path,
+                        new_data=sessions,
+                        commit_message="Save match sessions from Streamlit",
+                    )
+                    st.success("저장 완료! (커밋 생성됨)")
+        
+                except Exception as e:
+                    st.error(f"저장 실패: {e}")
  
 
 
