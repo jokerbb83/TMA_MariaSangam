@@ -1,15 +1,22 @@
 # -*- coding: utf-8 -*-
+import base64
+import datetime
+import hashlib
+import itertools
 import json
+import math
 import os
 import random
-import math
+import re
+from collections import Counter, defaultdict
 from datetime import date
-from collections import defaultdict, Counter
+from itertools import combinations
 
 import pandas as pd
+import plotly.express as px
+import requests
 import streamlit as st
 import streamlit.components.v1 as components
-import plotly.express as px
 
 
 # =========================================================
@@ -17,10 +24,6 @@ import plotly.express as px
 # - Streamlit Secrets에 아래가 있어야 함:
 #   GITHUB_TOKEN, GITHUB_REPO, GITHUB_BRANCH, GITHUB_FILE_PATH
 # =========================================================
-import base64
-import json
-import requests
-import streamlit as st
 
 def github_upsert_json_file(
     file_path: str,
@@ -81,12 +84,6 @@ def github_upsert_json_file(
         raise RuntimeError(f"GitHub PUT 실패: {r2.status_code} / {r2.text}")
 
     return r2.json()
-
-
-
-
-
-
 
 
 # ---------------------------------------------------------
@@ -186,10 +183,8 @@ components.html("""
 """, height=0)
 
 
-
-
 # ---------------------------------------------------------
-# ✅ Streamlit 상/하단 크레딧/툴바 숨김 CSS (한 방)
+# ✅ Streamlit 상/하단 크레딧/툴바 숨김 + 라이트 고정 CSS (한 방)
 # ---------------------------------------------------------
 st.markdown("""
 <style>
@@ -204,10 +199,76 @@ div[data-testid="stDecoration"] {visibility: hidden !important;}
 div[data-testid="stStatusWidget"] {visibility: hidden !important;}
 .stDeployButton {display: none !important;}
 
+/* ✅ 라이트 모드 강제 */
+:root { color-scheme: light !important; }
+html, body, [data-testid="stAppViewContainer"] {
+  background: #ffffff !important;
+  color: #111827 !important;
+}
+
+/* 입력 UI 흰색 고정 */
+input, textarea, select {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+}
+[data-testid="stSelectbox"] > div > div,
+[data-testid="stMultiSelect"] > div > div,
+[data-testid="stNumberInput"] > div > div:first-child,
+[data-testid="stTextInput"] > div > div,
+div[role="combobox"],
+div[role="spinbutton"],
+[data-baseweb="select"],
+[data-baseweb="input"] {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+  border: 1px solid #e5e7eb !important;
+}
+
+/* 드롭다운/달력/팝오버(카톡 인앱에서 까매지는 부분) */
+div[data-baseweb="popover"],
+div[data-baseweb="menu"],
+ul[role="listbox"], div[role="listbox"]{
+  background: #ffffff !important;
+  color: #111827 !important;
+  border: 1px solid rgba(0,0,0,0.08) !important;
+}
+div[data-baseweb="popover"] *,
+div[data-baseweb="menu"] *,
+ul[role="listbox"] *,
+div[role="listbox"] * {
+  color: #111827 !important;
+}
+
+/* 선택/호버 */
+div[data-baseweb="menu"] div[role="option"][aria-selected="true"],
+ul[role="listbox"] li[aria-selected="true"]{
+  background: #f3f4f6 !important;
+}
+div[data-baseweb="menu"] div[role="option"]:hover,
+ul[role="listbox"] li:hover{
+  background: #e5e7eb !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
+# ---------------------------------------------------------
+# ✅ 카톡 인앱브라우저 다크모드 “메타”까지 라이트로 고정 (보조)
+# ---------------------------------------------------------
+components.html("""
+<script>
+(function () {
+  const doc = window.parent?.document || document;
 
+  function upsertMeta(name, content){
+    let m = doc.querySelector(`meta[name="${name}"]`);
+    if(!m){ m = doc.createElement("meta"); m.setAttribute("name", name); doc.head.appendChild(m); }
+    m.setAttribute("content", content);
+  }
+  upsertMeta("color-scheme", "light");
+  upsertMeta("supported-color-schemes", "light");
+})();
+</script>
+""", height=0)
 
 
 st.markdown("""
@@ -233,9 +294,15 @@ st.markdown("""
   padding-bottom:2px;
 }
 .msa-game-line b{ white-space:nowrap; }
+
+/* ✅ 게임(라운드) 경계선 */
+.msa-game-sep{
+  border-top:1px solid rgba(0,0,0,0.12);
+  margin:8px 0 6px 0;
+}
+
 </style>
 """, unsafe_allow_html=True)
-
 
 
 # ---------------------------------------------------------
@@ -260,7 +327,6 @@ MBTI_OPTIONS = [
     "ESTP", "ESFP", "ENFP", "ENTP",
     "ESTJ", "ESFJ", "ENFJ", "ENTJ",
 ]
-
 
 
 WIN_POINT = 3
@@ -422,7 +488,6 @@ HANUL_AA_PATTERNS = {
         "7F:8G",
     ],
 }
-
 
 
 def char_to_index(ch: str) -> int:
@@ -651,7 +716,6 @@ def build_daily_report(sel_date, day_data):
     return lines
 
 
-
 # ---------------------------------------------------------
 # 파일 입출력
 # ---------------------------------------------------------
@@ -827,7 +891,6 @@ def normalize_mixed_schedule(schedule, meta, enabled: bool = False):
     return fixed
 
 
-
 def render_name_badge(name, roster_by_name):
     """이름 + 성별 배경 색깔 뱃지 HTML"""
     meta = roster_by_name.get(name, {})
@@ -909,7 +972,6 @@ def render_distribution_section(title, counter_dict, total_count, min_count):
     st.plotly_chart(fig, use_container_width=True)
 
 
-
 def sync_side_select(sel_date, game_idx, player, partner):
     key_p = f"{sel_date}_side_{game_idx}_{player}"
     key_m = f"{sel_date}_side_{game_idx}_{partner}"
@@ -955,7 +1017,6 @@ def build_mixed_doubles_schedule_strict(
     group_only=False,
     tries_per_match=180,
 ):
-    import random
 
     def _gender(name: str) -> str:
         return roster_by_name.get(name, {}).get("gender", "남")
@@ -1065,11 +1126,6 @@ def build_mixed_doubles_schedule_strict(
 
     return schedule
 
-
-from itertools import combinations
-from collections import defaultdict
-import random
-import math
 
 def build_doubles_schedule(players, max_games, court_count, mode,
                            use_ntrp, group_only, roster_by_name,
@@ -1405,13 +1461,10 @@ def build_singles_schedule(players, max_games, court_count, mode,
     return schedule
 
 
-
 # -------------------------------------------
 # 🎾 오늘의 테니스 운세 함수
 # -------------------------------------------
 def get_daily_fortune(sel_player):
-    import random
-    import datetime
 
     fortune_messages = [
         "(주손)잡이가 귀인이다.",
@@ -1469,7 +1522,6 @@ def get_daily_fortune(sel_player):
                       .replace("(자음)", rng.choice(chosung)))
 
     return fortune
-
 
 
 # ---------------------------------------------------------
@@ -1556,7 +1608,6 @@ def _best_assignment_4p(players4, locked_pos, gender_mode, ntrp_on):
     locked_pos: {pos_index: player_name} (pos_index 0..3)
     return: best [p1,p2,p3,p4] or None
     """
-    import itertools
 
     best = None
     best_score = -10**18
@@ -1796,7 +1847,6 @@ def ensure_min_games(schedule, roster, min_games, gtype="복식"):
     return schedule
 
 
-
 def build_schedule_from_manual(total_rounds: int, court_count: int, gtype: str):
     schedule = []
     for r in range(1, int(total_rounds) + 1):
@@ -1824,7 +1874,6 @@ def build_schedule_from_manual(total_rounds: int, court_count: int, gtype: str):
     return schedule
 
 
-
 # ---------------------------------------------------------
 # 게스트 판별 / 통계용 게스트 묶음 이름
 # ---------------------------------------------------------
@@ -1835,7 +1884,6 @@ def is_guest_name(name, roster):
 
 def guest_bucket(name, roster):
     return "게스트" if is_guest_name(name, roster) else name
-
 
 
 def classify_game_group(players, roster_by_name, groups_snapshot=None):
@@ -1867,11 +1915,6 @@ def classify_game_group(players, roster_by_name, groups_snapshot=None):
         return "B"
     return "other"
 
-
-
-from collections import defaultdict
-import math
-import random
 
 def _count_games_in_schedule(schedule):
     counts = defaultdict(int)
@@ -2314,44 +2357,136 @@ MOBILE_LANDSCAPE = """
 st.markdown(MOBILE_LANDSCAPE, unsafe_allow_html=True)
 
 
-
-
-
-
-
-
-
 BUTTON_CSS = """
 <style>
-/* ✅ 기본(민트) 버튼: danger 래퍼 안은 제외 */
-div[data-testid="stButton"]:not(.main-danger-btn) > button,
-div[data-testid="stButton"]:not(.main-primary-btn):not(.main-danger-btn):not(.main-secondary-btn) > button {
-    background-color: #5fcdb2 !important;
-    color: #ffffff !important;
-    font-weight: 600 !important;
-    border: none !important;
-    border-radius: 10px !important;
-    padding: 10px 0 !important;
-    transition: all 0.12s ease-out;
-}
-div[data-testid="stButton"]:not(.main-danger-btn) > button:hover {
-    filter: brightness(1.06) !important;
-    transform: translateY(-1px);
+/* =========================================================
+   ✅ 버튼 컬러 팔레트 (4종)
+   - 기본: 민트
+   - marker(div class=main-*-btn) 바로 다음에 오는 st.button을 색상 오버라이드
+     * main-primary-btn   : 민트
+     * main-danger-btn    : 빨강
+     * main-secondary-btn : 파랑
+     * main-warning-btn   : 주황
+   ---------------------------------------------------------
+   ⚠️ Streamlit은 markdown HTML이 위젯을 "감싸지" 못해서
+      (div로 래핑해도) 스타일이 안 먹는 경우가 많아.
+      그래서 :has() + 인접 형제 선택자로 "마커 다음 버튼"을 잡는다.
+   ========================================================= */
+
+:root{
+  --btn-mint:#5fcdb2;
+  --btn-mint-hover:#55c4aa;
+
+  --btn-red:#ef4444;
+  --btn-red-hover:#dc2626;
+
+  --btn-blue:#13baff;
+  --btn-blue-hover:#2563eb;
+
+  --btn-orange:#f59e0b;
+  --btn-orange-hover:#d97706;
+
+  --btn-radius:14px;
+  --btn-height:56px;
 }
 
+/* ✅ 기본(민트) */
+div[data-testid="stButton"] > button{
+  background-color: var(--btn-mint) !important;
+  color:#fff !important;
+  border:1px solid var(--btn-mint) !important;
+  font-weight:700 !important;
+  border-radius:var(--btn-radius) !important;
+  height:var(--btn-height) !important;
+  box-shadow:0 8px 18px rgba(95,205,178,0.22) !important;
+  filter:none !important;
+}
+div[data-testid="stButton"] > button:hover{
+  background-color: var(--btn-mint-hover) !important;
+  border-color: var(--btn-mint-hover) !important;
+  filter:none !important;
+}
+div[data-testid="stButton"] > button:active{
+  transform: translateY(1px);
+}
+div[data-testid="stButton"] > button:focus{
+  outline:none !important;
+  box-shadow:0 0 0 4px rgba(95,205,178,0.25) !important;
+}
+
+/* ---------------------------------------------------------
+   ✅ "마커 다음 버튼" 컬러 오버라이드 (Streamlit DOM 대응)
+   - 최신: div[data-testid="stElementContainer"]
+   - 구버전: div.element-container
+   --------------------------------------------------------- */
+
+/* 민트(명시) */
+div[data-testid="stElementContainer"]:has(.main-primary-btn) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button,
+div.element-container:has(.main-primary-btn) + div.element-container div[data-testid="stButton"] > button{
+  background-color: var(--btn-mint) !important;
+  border-color: var(--btn-mint) !important;
+  box-shadow:0 8px 18px rgba(95,205,178,0.22) !important;
+}
+/* 빨강 */
+div[data-testid="stElementContainer"]:has(.main-danger-btn) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button,
+div.element-container:has(.main-danger-btn) + div.element-container div[data-testid="stButton"] > button{
+  background-color: var(--btn-red) !important;
+  border-color: var(--btn-red) !important;
+  box-shadow:0 8px 18px rgba(239,68,68,0.18) !important;
+}
+/* 파랑 */
+div[data-testid="stElementContainer"]:has(.main-secondary-btn) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button,
+div.element-container:has(.main-secondary-btn) + div.element-container div[data-testid="stButton"] > button{
+  background-color: var(--btn-blue) !important;
+  border-color: var(--btn-blue) !important;
+  box-shadow:0 8px 18px rgba(19,186,255,0.18) !important;
+}
+/* 주황 */
+div[data-testid="stElementContainer"]:has(.main-warning-btn) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button,
+div.element-container:has(.main-warning-btn) + div.element-container div[data-testid="stButton"] > button{
+  background-color: var(--btn-orange) !important;
+  border-color: var(--btn-orange) !important;
+  box-shadow:0 8px 18px rgba(245,158,11,0.18) !important;
+}
+
+/* hover */
+/* 민트 hover */
+div[data-testid="stElementContainer"]:has(.main-primary-btn) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button:hover,
+div.element-container:has(.main-primary-btn) + div.element-container div[data-testid="stButton"] > button:hover{
+  background-color: var(--btn-mint-hover) !important;
+  border-color: var(--btn-mint-hover) !important;
+}
+/* 빨강 hover */
+div[data-testid="stElementContainer"]:has(.main-danger-btn) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button:hover,
+div.element-container:has(.main-danger-btn) + div.element-container div[data-testid="stButton"] > button:hover{
+  background-color: var(--btn-red-hover) !important;
+  border-color: var(--btn-red-hover) !important;
+}
+/* 파랑 hover */
+div[data-testid="stElementContainer"]:has(.main-secondary-btn) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button:hover,
+div.element-container:has(.main-secondary-btn) + div.element-container div[data-testid="stButton"] > button:hover{
+  background-color: var(--btn-blue-hover) !important;
+  border-color: var(--btn-blue-hover) !important;
+}
+/* 주황 hover */
+div[data-testid="stElementContainer"]:has(.main-warning-btn) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button:hover,
+div.element-container:has(.main-warning-btn) + div.element-container div[data-testid="stButton"] > button:hover{
+  background-color: var(--btn-orange-hover) !important;
+  border-color: var(--btn-orange-hover) !important;
+}
+
+/* ✅ 모바일 버튼 크기 살짝 조정 */
 @media (max-width: 768px) {
-    div[data-testid="stButton"]:not(.main-danger-btn) > button {
-        font-size: 0.95rem !important;
-        padding-top: 0.6rem !important;
-        padding-bottom: 0.6rem !important;
-    }
+  div[data-testid="stButton"] > button {
+    font-size: 0.95rem !important;
+    padding-top: 0.6rem !important;
+    padding-bottom: 0.6rem !important;
+  }
 }
 </style>
 """
+
 st.markdown(BUTTON_CSS, unsafe_allow_html=True)
-
-
-
 
 
 # 🔽 모바일 폰에서 여백/폰트/탭 간격 줄이는 CSS + 이름 뱃지 색상 고정
@@ -2444,10 +2579,6 @@ if "current_order" not in st.session_state:
     st.session_state.current_order = []
 if "shuffle_count" not in st.session_state:
     st.session_state.shuffle_count = 0
-
-
-import pandas as pd
-import streamlit as st
 
 
 def _safe_df_for_styler(df: pd.DataFrame) -> pd.DataFrame:
@@ -2575,7 +2706,6 @@ def colorize_df_names_hybrid(
     return sty
 
 
-
 def smart_table_hybrid(df_or_styler):
     """
     ✅ 모바일/PC 자동 분기 테이블 출력
@@ -2641,8 +2771,6 @@ def smart_table_hybrid(df_or_styler):
         st.dataframe(df_or_styler, use_container_width=True, hide_index=True)
     else:
         st.dataframe(df_or_styler, use_container_width=True, hide_index=True)
-
-
 
 
 # ---------------------------------------------------------
@@ -2871,7 +2999,6 @@ with tab1:
         st.markdown(f"- MBTI 분포: {mbti_text}")
 
 
-
         with st.expander("📈 항목별 분포 다이어그램 (각 항목 100% 기준) 🔽 아래로 내려보세요.", expanded=False):
 
             # 🔧 필터 / 옵션 (슬라이더 + 어떤 항목 볼지 선택)
@@ -2931,8 +3058,6 @@ with tab1:
                             )
 
 
-
-
     # =========================================================
     # ✅ 선수 정보 GitHub 저장 버튼 (MSC_players.json)
     #   - "선수 정보 수정 / 삭제" 위에 배치
@@ -2970,7 +3095,6 @@ with tab1:
             st.error(f"저장 실패: {e}")
 
 
-
     # -----------------------------------------------------
     # 1) 선수 정보 수정 / 삭제
     # -----------------------------------------------------
@@ -2998,7 +3122,6 @@ with tab1:
     if "roster" not in st.session_state or not isinstance(st.session_state.get("roster"), list):
         st.session_state.roster = roster
     roster = st.session_state.roster
-
 
 
     names = sorted([p.get("name", "") for p in roster if p.get("name")], key=lambda x: x)
@@ -3135,10 +3258,13 @@ with tab1:
 
                 cc1, cc2 = st.columns(2)
                 with cc1:
+                    st.markdown('<div class="main-secondary-btn">', unsafe_allow_html=True)
                     if st.button("❌ 취소", use_container_width=True, key="cancel_delete"):
                         st.session_state.pending_delete = None
+                    st.markdown("</div>", unsafe_allow_html=True)
 
                 with cc2:
+                    st.markdown('<div class="main-danger-btn">', unsafe_allow_html=True)
                     if st.button("🗑 네, 삭제합니다", use_container_width=True, key="confirm_delete"):
                         target = st.session_state.pending_delete
                         roster = [p for p in roster if p.get("name") != target]
@@ -3221,11 +3347,6 @@ with tab1:
 
                 _safe_rerun()
 
-
-
-
-import random
-from collections import defaultdict
 
 # ---------------------------------------------------------
 # ✅ 스케줄 평가 유틸
@@ -3479,7 +3600,6 @@ def _ui_to_doubles_mode(mode_label: str) -> str:
     if mode_label == "랜덤 복식":
         return "랜덤복식"
     return "랜덤복식"
-
 
 
 with tab2:
@@ -3856,7 +3976,6 @@ with tab2:
     # =========================================================
     TEAM_COLORS = ["레드", "그린", "블루", "옐로우"]
 
-    import hashlib
 
     def _team_key(name: str) -> str:
         return hashlib.md5(name.encode("utf-8")).hexdigest()[:10]
@@ -4166,8 +4285,6 @@ with tab2:
             bench_block = set(last_round_played)
 
 
-
-
             used_round = set()
 
             for cc in range(1, court_count + 1):
@@ -4220,8 +4337,6 @@ with tab2:
             last_round_played = set(used_round)
 
         return schedule
-
-
 
 
     # =========================================================
@@ -4346,9 +4461,6 @@ with tab2:
             st.session_state["_guest_clear_pending"] = False
 
 
-
-
-
     if not guest_enabled and st.session_state._injected_guest_names:
         for nm in list(st.session_state._injected_guest_names):
             if roster_by_name.get(nm, {}).get("is_guest", False):
@@ -4409,8 +4521,6 @@ with tab2:
                     safe_rerun()
 
 
-
-
         if st.session_state.get("guest_add_msg"):
             st.success(st.session_state["guest_add_msg"])
             st.session_state["guest_add_msg"] = None
@@ -4433,7 +4543,6 @@ with tab2:
                         guest_list.pop(i - 1)
                         st.session_state.guest_list = guest_list
                         safe_rerun()
-
 
 
     guest_names = [g["name"] for g in guest_list] if guest_enabled else []
@@ -4665,7 +4774,6 @@ with tab2:
         st.caption("아래 팀 박스에서 오늘 참가선수 중에서 골라 넣어줘. 이름 색은 팀 색으로 보여.")
 
 
-
         # ✅ 팀별 박스 UI
         cols = st.columns(len(team_opts))
 
@@ -4691,9 +4799,8 @@ with tab2:
                 cur = [p for p in cur if p in players_selected]
                 out[t] = cur
             return out
-    
-        picks_state = _get_team_picks_from_state()
 
+        picks_state = _get_team_picks_from_state()
 
 
         for i, team in enumerate(team_opts):
@@ -4751,12 +4858,12 @@ with tab2:
         # 선택 상태를 session_state로 갱신(다른 팀 options 잠금에 바로 반영되게)
         for t in team_opts:
             picks_state[t] = picked_by_team.get(t, [])
-    
+
         # 현재 스텝에서 선택 변화가 있었다면 rerun 해서 options 잠금 즉시 반영
         # (키별 이전값 추적)
         if "_team_prev_picks" not in st.session_state:
             st.session_state["_team_prev_picks"] = {}
-    
+
         changed = False
         for t in team_opts:
             prev = st.session_state["_team_prev_picks"].get(t, [])
@@ -4764,10 +4871,9 @@ with tab2:
             if sorted(prev) != sorted(cur):
                 changed = True
             st.session_state["_team_prev_picks"][t] = cur
-    
+
         if changed:
             safe_rerun()
-
 
 
         # =========================================================
@@ -4789,7 +4895,6 @@ with tab2:
 
         # 세션 저장
         st.session_state["team_assign"] = new_assign
-
 
 
         # =========================================================
@@ -4838,18 +4943,17 @@ with tab2:
             cur = st.session_state.get(k, [])
             if isinstance(cur, list):
                 assigned_now.update([p for p in cur if p in players_selected])
-    
+
         unassigned = [p for p in players_selected if p not in assigned_now]
-    
+
         if unassigned:
             st.markdown("**미배정 인원**", unsafe_allow_html=True)
             badges = "".join(_gray_badge(n) for n in unassigned)
             st.markdown(badges, unsafe_allow_html=True)
             st.markdown("<div style='height:0.35rem;'></div>", unsafe_allow_html=True)
-    
+
     if is_team_mode and is_manual_mode:
         st.caption("⚠️ 팀별 모드는 자동 생성에서만 적용돼. (수동 입력에서는 복식/단식 일반모드로 동작)")
-
 
 
     auto_basis = "개인당 경기 수 기준"
@@ -4864,8 +4968,6 @@ with tab2:
                 horizontal=True,
                 key="auto_basis_radio",
             )
-
-
 
 
     # =========================================================
@@ -5003,8 +5105,6 @@ with tab2:
             disabled=(is_manual_mode or is_team_auto_mode or (gtype == "복식" and is_aa_mode)),
             key="group_only_chk",
         )
-
-
 
 
     view_mode_for_schedule = st.session_state.get("order_view_mode", "전체")
@@ -5251,10 +5351,6 @@ with tab2:
             )
 
 
-
-
-
-
         # AA 모드
         if (gtype == "복식") and ("한울 AA" in str(mode_label)):
             ordered = players_selected[:]
@@ -5384,7 +5480,6 @@ with tab2:
         return best
 
 
-
     # 생성
     if gen_clicked:
         if is_team_auto_mode:
@@ -5403,7 +5498,6 @@ with tab2:
                 st.session_state.today_schedule = sched
                 if not sched:
                     st.warning("대진 생성에 실패했어요. 옵션을 완화하거나(코트/라운드/혼복/NTRP/조별) 인원을 확인해줘.")
-
 
 
     schedule = st.session_state.get("today_schedule", [])
@@ -5572,7 +5666,22 @@ with tab2:
                         unsafe_allow_html=True,
                     )
         else:
+            # ✅ 게임(라운드) 경계선: 같은 게임 안(코트1/2)에는 선을 안 긋고,
+            #    다음 게임이 시작되기 전에만 얇은 선을 추가
+            courts = []
+            for item in schedule:
+                try:
+                    courts.append(int(item[3]))
+                except Exception:
+                    pass
+            court_count = len(sorted(set(courts))) if courts else 1
+            if court_count <= 0:
+                court_count = 1
+
             for i, (gt, t1, t2, court) in enumerate(schedule, start=1):
+                if i > 1 and ((i - 1) % court_count) == 0:
+                    st.markdown('<div class="msa-game-sep"></div>', unsafe_allow_html=True)
+
                 t1_badges = "".join(render_name_badge(n, roster_by_name) for n in t1)
                 t2_badges = "".join(render_name_badge(n, roster_by_name) for n in t2)
                 st.markdown(
@@ -5712,7 +5821,6 @@ with tab3:
                     save_sessions(sessions)
 
 
-
         # 나중에 다시 그리기 위한 요약 컨테이너
         summary_container = st.container()
 
@@ -5758,12 +5866,9 @@ with tab3:
             """, unsafe_allow_html=True)
 
 
-
-
         # -----------------------------
         # 2. 경기 스코어 입력 + 점수 잠금
         # -----------------------------
-
 
 
         # 복식 게임 포함 여부 체크 (단식이면 안내문 숨김)
@@ -5797,24 +5902,23 @@ with tab3:
             score_options = SCORE_OPTIONS
 
 
-
             # ------------------------------
             # 게임을 A조 / B조 / 기타로 분류
             # ------------------------------
             games_A, games_B, games_other = [], [], []
             day_groups_snapshot = day_data.get("groups_snapshot")
-            
+
             for idx, (gtype, t1, t2, court) in enumerate(schedule, start=1):
                 all_players = list(t1) + list(t2)
-            
+
                 grp_flag = classify_game_group(
                     all_players,
                     roster_by_name,
                     day_groups_snapshot,
                 )
-            
+
                 item = (idx, gtype, t1, t2, court)
-            
+
                 if grp_flag == "A":
                     games_A.append(item)
                 elif grp_flag == "B":
@@ -5988,12 +6092,27 @@ with tab3:
 
                 # 실제 게임들
                 for local_no, (idx, gtype, t1, t2, court) in enumerate(game_list, start=1):
+
+                    # ✅ 같은 라운드(코트1/2/...) 사이에는 경계선(구분선) 제거: 코트 1에서만 선 표시
+                    try:
+                        _court_s = str(court).strip() if court is not None else ""
+                        _digits = "".join([ch for ch in _court_s if ch.isdigit()])
+                        _court_i = int(_digits) if _digits else None
+                    except Exception:
+                        _court_i = None
+
+                    _show_sep = True
+                    if _court_i is not None and _court_i != 1:
+                        _show_sep = False
+
+                    _sep_css = "border-top:1px solid #e5e7eb;" if _show_sep else "border-top:none;"
+                    _top_css = "margin-top:0.6rem; padding-top:0.4rem;" if _show_sep else "margin-top:0.25rem; padding-top:0.15rem;"
+
                     st.markdown(
                         f"""
                         <div style="
-                            margin-top:0.6rem;
-                            padding-top:0.4rem;
-                            border-top:1px solid #e5e7eb;
+                            {_top_css}
+                            {_sep_css}
                             margin-bottom:0.18rem;
                         ">
                             <span style="font-weight:600; font-size:0.96rem;">
@@ -6006,6 +6125,7 @@ with tab3:
                         """,
                         unsafe_allow_html=True,
                     )
+
 
                     # 저장돼 있던 값
                     res = results.get(str(idx)) or results.get(idx) or {}
@@ -6241,10 +6361,6 @@ with tab3:
             # -----------------------------
 
 
-
-
-
-
             warnings = detect_score_warnings(day_data)
 
             if warnings:
@@ -6291,31 +6407,29 @@ with tab3:
             col_a, col_b = st.columns([3, 2])
             with col_a:
                 save_to_github_clicked = st.button("✅ 경기기록 저장", use_container_width=True)
-        
+
             with col_b:
                 st.caption("경기기록 생성과 수정후 꼭 버튼을 눌러주세요. 안 누르면 다 날아갑니다.저~멀리")
-        
+
             if save_to_github_clicked:
                 try:
                     sessions = st.session_state.get("sessions", {})
                     if not isinstance(sessions, dict):
                         sessions = {}
-        
+
                     file_path = st.secrets.get("GITHUB_FILE_PATH", "MSC_sessions.json")
                     repo = st.secrets.get("GITHUB_REPO", "")
                     branch = st.secrets.get("GITHUB_BRANCH", "main")
-        
+
                     res = github_upsert_json_file(
                         file_path=file_path,
                         new_data=sessions,
                         commit_message="Save match sessions from Streamlit",
                     )
                     st.success("저장 완료! (커밋 생성됨)")
-        
+
                 except Exception as e:
                     st.error(f"저장 실패: {e}")
- 
-
 
 
             # =====================================================
@@ -6415,7 +6529,7 @@ with tab3:
 
                         with col_cancel:
                             st.markdown(
-                                '<div class="main-danger-btn" style="margin-bottom:4px;">',
+                                '<div class="main-secondary-btn" style="margin-bottom:4px;">',
                                 unsafe_allow_html=True,
                             )
                             cancel_clicked = st.button(
@@ -6525,16 +6639,10 @@ with tab3:
                     if summary_view_mode == "대진별 보기":
 
 
-
-
-
-
                         # =========================================================
                         # ✅ [대진표 캡처 + 텍스트 복사용] 준비 (24칸 들여쓰기)
                         #   - 대진별 보기에서만 동작
                         # =========================================================
-                        import re, json
-                        import streamlit.components.v1 as components
 
                         def _team_join(x):
                             if isinstance(x, (list, tuple)):
@@ -6551,9 +6659,10 @@ with tab3:
                               1게임.1코트 A,B vs C,D
                               1게임.2코트 E,F vs G,H
                               쉬는사람: X,Y
-                              
+
                               2게임.1코트 ...
                               2게임.2코트 ...
+                              쉬는사람: ...
                             """
                             if not schedule_list:
                                 return ""
@@ -6569,51 +6678,66 @@ with tab3:
                             if court_count <= 0:
                                 court_count = 1
 
-                            # 오늘 전체 참가자(대진 전체에서 수집) - 등장 순서 유지
-                            all_players_ordered = []
-                            _seen = set()
-                            for _gt, _t1, _t2, _c in schedule_list:
-                                for _p in list(_t1) + list(_t2):
-                                    _pc = re.sub(r"<[^>]*>", "", str(_p)).strip()
-                                    if not _pc:
-                                        continue
-                                    if _pc not in _seen:
-                                        _seen.add(_pc)
-                                        all_players_ordered.append(_pc)
+                            # ✅ 전체 인원(스케줄에 등장하는 이름 기준)
+                            all_set = set()
+                            for (_gt, _t1, _t2, _court) in schedule_list:
+                                for side in (_t1, _t2):
+                                    if isinstance(side, (list, tuple)):
+                                        for v in side:
+                                            v = str(v).strip()
+                                            if v:
+                                                all_set.add(v)
+                                    else:
+                                        v = str(side).strip()
+                                        if v:
+                                            all_set.add(v)
 
-                            # 라운드별로 묶기
-                            rounds = {}  # round_no -> [(court_no, t1, t2), ...]
-                            for i, (_gt, _t1, _t2, _court) in enumerate(schedule_list):
-                                round_no = (i // court_count) + 1
-                                try:
-                                    court_no = int(_court)
-                                except Exception:
-                                    court_no = (i % court_count) + 1
-                                rounds.setdefault(round_no, []).append((court_no, _t1, _t2))
+                            def _add_used(used_set, side):
+                                if isinstance(side, (list, tuple)):
+                                    for v in side:
+                                        v = str(v).strip()
+                                        if v:
+                                            used_set.add(v)
+                                else:
+                                    v = str(side).strip()
+                                    if v:
+                                        used_set.add(v)
 
-                            lines = []
-                            last_round = max(rounds.keys()) if rounds else 1
-
-                            for r in sorted(rounds.keys()):
-                                used = set()
-                                for court_no, t1, t2 in rounds[r]:
-                                    lines.append(f"{r}게임.{court_no}코트 {_team_join(t1)} vs {_team_join(t2)}")
-                                    for _p in list(t1) + list(t2):
-                                        _pc = re.sub(r"<[^>]*>", "", str(_p)).strip()
-                                        if _pc:
-                                            used.add(_pc)
-
-                                rest = [p for p in all_players_ordered if p not in used]
+                            def _append_rest_line(lines, used_set):
+                                rest = sorted([p for p in all_set if p and p not in used_set])
                                 if rest:
-                                    lines.append(f"쉬는사람: {','.join(rest)}")
+                                    lines.append("쉬는사람: " + ", ".join(rest))
                                 else:
                                     lines.append("쉬는사람: 없음")
 
-                                # ✅ 게임(라운드) 바뀌면 한 칸 띄우기
-                                if r != last_round:
+                            lines = []
+                            used_round = set()
+                            prev_round = 1
+
+                            for i, (gtype, t1, t2, court) in enumerate(schedule_list):
+                                round_no = (i // court_count) + 1
+
+                                # ✅ 게임(라운드) 바뀌기 직전에 쉬는사람 라인 + 빈 줄
+                                if i > 0 and round_no != prev_round:
+                                    _append_rest_line(lines, used_round)
                                     lines.append("")
+                                    used_round = set()
+
+                                try:
+                                    court_no = int(court)
+                                except Exception:
+                                    court_no = (i % court_count) + 1
+
+                                lines.append(f"{round_no}게임.{court_no}코트 {_team_join(t1)} vs {_team_join(t2)}")
+                                _add_used(used_round, t1)
+                                _add_used(used_round, t2)
+                                prev_round = round_no
+
+                            # 마지막 라운드 쉬는사람
+                            _append_rest_line(lines, used_round)
 
                             return "\n".join(lines).strip()
+
 
                         fixture_text = build_fixture_text_by_round(schedule)
 
@@ -6638,7 +6762,6 @@ with tab3:
                             render_score_summary_table(all_games_sum, roster_by_name)
 
                         st.markdown(f'<div id="{capture_id}__end"></div>', unsafe_allow_html=True)
-
 
 
                         # =========================================================
@@ -6804,17 +6927,10 @@ with tab3:
                         )
 
 
-
-
-
-
-
                     else:
                         # =========================================================
                         # ✅ [개인별 보기] 캡처 마커 + 이미지 저장 버튼(only)
                         # =========================================================
-                        import re, json
-                        import streamlit.components.v1 as components
 
                         safe_date_key_p = re.sub(r"[^0-9a-zA-Z_]+", "_", str(sel_date))
                         capture_id_p = f"tab3_personal_capture_{safe_date_key_p}"
@@ -7052,12 +7168,8 @@ with tab3:
                         )
 
 
-
-
-
         else:
             st.info("이 날짜에는 저장된 대진이 없습니다.")
-
 
 
 # =========================================================
@@ -7661,7 +7773,14 @@ with tab5:
 
                 # ---------------------------------------------------------
                 # 1-3) 순위표 출력
-                # ---------------------------------------------------------
+                # ✅ 순위표 JPG 저장: 캡처 범위 마커
+                safe_month_key = re.sub(r"[^0-9a-zA-Z_\-]+", "_", str(sel_month))
+                mode_key = "all" if rank_view_mode == "전체" else "ab"
+                rank_capture_id = f"month_rank_capture_{safe_month_key}_{mode_key}"
+                rank_file_name = f"월간순위표_{safe_month_key}_{mode_key}.jpg"
+                st.markdown(f'<div id="{rank_capture_id}__start"></div>', unsafe_allow_html=True)
+
+# ---------------------------------------------------------
                 if rank_view_mode == "전체":
                     rank_df = build_rank_df(recs_all)
                     if rank_df is None:
@@ -7694,7 +7813,130 @@ with tab5:
                     if not has_any:
                         st.info("A조 / B조로 나눠서 표시할 데이터가 없습니다.")
 
-                # =========================================================
+                st.markdown(f'<div id="{rank_capture_id}__end"></div>', unsafe_allow_html=True)
+
+                components.html(
+                    f"""
+                    <div style="display:flex; gap:12px; margin-top:12px; align-items:center;">
+                      <button id="{rank_capture_id}__save"
+                        style="padding:10px 14px; border-radius:12px;
+                               border:1px solid #10b981; background:#10b981; color:white;
+                               cursor:pointer; font-weight:800;">
+                        순위표 JPG 저장
+                      </button>
+                      <span id="{rank_capture_id}__msg" style="font-size:12px; opacity:0.7;"></span>
+                    </div>
+
+                    <script>
+                    (function () {{
+                      const capId = {json.dumps(rank_capture_id)};
+                      const fileName = {json.dumps(rank_file_name)};
+                      const msgEl  = document.getElementById(capId + "__msg");
+                      const btnSave = document.getElementById(capId + "__save");
+
+                      function setMsg(t) {{ if (msgEl) msgEl.textContent = t; }}
+
+                      async function ensureHtml2Canvas() {{
+                        const p = window.parent;
+                        if (p && p.html2canvas) return p.html2canvas;
+                        return await new Promise((resolve, reject) => {{
+                          try {{
+                            const ps = p.document.createElement("script");
+                            ps.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+                            ps.onload = () => resolve(p.html2canvas);
+                            ps.onerror = reject;
+                            p.document.head.appendChild(ps);
+                          }} catch(e) {{
+                            reject(e);
+                          }}
+                        }});
+                      }}
+
+                      if (btnSave) {{
+                        btnSave.onclick = async function() {{
+                          try {{
+                            setMsg("이미지 생성중…");
+                            const pdoc = window.parent.document;
+
+                            const start = pdoc.getElementById(capId + "__start");
+                            const end   = pdoc.getElementById(capId + "__end");
+                            if (!start || !end) {{
+                              setMsg("캡처 마커를 찾지 못했어.");
+                              return;
+                            }}
+
+                            const startTop = start.closest('div[data-testid="stElementContainer"]')
+                                          || start.closest('div.element-container')
+                                          || start.parentElement;
+
+                            const endTop   = end.closest('div[data-testid="stElementContainer"]')
+                                          || end.closest('div.element-container')
+                                          || end.parentElement;
+
+                            let common = startTop ? startTop.parentElement : null;
+                            while (common && endTop && !common.contains(endTop)) {{
+                              common = common.parentElement;
+                            }}
+                            if (!common) {{
+                              setMsg("캡처 공통 부모를 찾지 못했어.");
+                              return;
+                            }}
+
+                            const kids = Array.from(common.children);
+                            const si = kids.indexOf(startTop);
+                            const ei = kids.indexOf(endTop);
+
+                            if (si < 0 || ei < 0 || ei <= si) {{
+                              setMsg("캡처 범위 인덱스 오류");
+                              return;
+                            }}
+
+                            const wrapper = pdoc.createElement("div");
+                            wrapper.style.position = "fixed";
+                            wrapper.style.left = "-100000px";
+                            wrapper.style.top = "0";
+                            wrapper.style.background = "#ffffff";
+                            wrapper.style.width = (common.clientWidth || 1200) + "px";
+                            wrapper.style.padding = "0";
+                            wrapper.style.margin = "0";
+
+                            for (let i = si + 1; i < ei; i++) {{
+                              wrapper.appendChild(kids[i].cloneNode(true));
+                            }}
+
+                            pdoc.body.appendChild(wrapper);
+
+                            const h2c = await ensureHtml2Canvas();
+                            const canvas = await h2c(wrapper, {{
+                              backgroundColor: "#ffffff",
+                              scale: 2,
+                              useCORS: true
+                            }});
+
+                            wrapper.remove();
+
+                            const url = canvas.toDataURL("image/jpeg", 0.95);
+                            const a = pdoc.createElement("a");
+                            a.href = url;
+                            a.download = fileName;
+                            pdoc.body.appendChild(a);
+                            a.click();
+                            a.remove();
+
+                            setMsg("JPEG 저장 완료!");
+                          }} catch (e) {{
+                            console.log(e);
+                            setMsg("저장 실패(콘솔 확인)");
+                          }}
+                        }};
+                      }}
+                    }})();
+                    </script>
+                    """,
+                    height=100,
+                )
+
+# =========================================================
                 # 2. 월 전체 경기 요약 (일별)
                 # =========================================================
                 st.subheader("2. 월 전체 경기 요약 (일별)")
