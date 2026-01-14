@@ -101,6 +101,9 @@ def github_upsert_json_file(
     if READ_ONLY:
         raise RuntimeError("READ_ONLY: 이 모드에서는 sessions/players 저장(쓰기)을 할 수 없습니다.")
 
+    # ✅ file_path 정리 (secrets에 공백/슬래시가 섞여도 안전)
+    file_path = str(file_path).strip().lstrip("/")
+
     token = token or st.secrets.get("GITHUB_TOKEN", "")
     repo = repo or st.secrets.get("GITHUB_REPO", "")
     branch = branch or st.secrets.get("GITHUB_BRANCH", "main")
@@ -754,86 +757,12 @@ def _github_read_json(repo: str, branch: str, file_path: str, token: str | None)
         return (False, None)
 
 
-
-def _is_nonempty_schedule(v):
-    return isinstance(v, list) and len(v) > 0
-
-def _merge_results(base, incoming):
-    # both dicts -> shallow merge game results keys
-    if not isinstance(base, dict):
-        base = {}
-    if not isinstance(incoming, dict):
-        return base
-    out = dict(base)
-    out.update(incoming)
-    return out
-
-def merge_sessions(prefer: dict, fallback: dict) -> dict:
-    """
-    세션 병합:
-    - prefer: 우선 데이터(보통 로컬/현재 메모리)
-    - fallback: 보조 데이터(보통 GitHub/원격)
-    규칙:
-    - schedule: prefer가 비어있고 fallback에 있으면 fallback 채택(=대진 날려먹는 것 방지)
-    - results: 둘 다 있으면 합치되 prefer 우선
-    - 그 외 필드: prefer 우선, 없으면 fallback
-    """
-    if not isinstance(prefer, dict):
-        prefer = {}
-    if not isinstance(fallback, dict):
-        fallback = {}
-
-    out = {}
-    keys = set(fallback.keys()) | set(prefer.keys())
-    for k in keys:
-        p = prefer.get(k, {})
-        f = fallback.get(k, {})
-        if not isinstance(p, dict):
-            p = {}
-        if not isinstance(f, dict):
-            f = {}
-
-        merged = dict(f)
-        merged.update(p)  # 기본은 prefer 우선
-
-        # schedule 보호(비어있는 prefer로 fallback schedule 덮어쓰지 않게)
-        ps = p.get("schedule", None)
-        fs = f.get("schedule", None)
-        if (not _is_nonempty_schedule(ps)) and _is_nonempty_schedule(fs):
-            merged["schedule"] = fs
-
-        # results는 병합(prefer 우선)
-        merged["results"] = _merge_results(f.get("results", {}), p.get("results", {}))
-
-        out[k] = merged
-    return out
-
-def merge_players(prefer_list, fallback_list):
-    """
-    players 병합: name 기준으로 prefer 우선.
-    """
-    if not isinstance(prefer_list, list):
-        prefer_list = []
-    if not isinstance(fallback_list, list):
-        fallback_list = []
-    by = {}
-    for p in fallback_list:
-        if isinstance(p, dict) and p.get("name"):
-            by[p["name"]] = p
-    for p in prefer_list:
-        if isinstance(p, dict) and p.get("name"):
-            by[p["name"]] = p
-    # 이름 정렬
-    return [by[n] for n in sorted(by.keys())]
-
-
 def load_json(path, default):
     """
-    ✅ admin 모드: 로컬 우선 + GitHub와 병합(대진 schedule 유실 방지)
-    ✅ observer/scoreboard 모드: GitHub 우선 + 로컬 fallback
-    - sessions / players 는 로컬과 GitHub 둘 다 있으면 병합해서 사용
+    ✅ admin 모드: 로컬 우선 → (없으면) GitHub fallback
+    ✅ observer 모드: GitHub 우선 → (실패시) 로컬 fallback
     """
-    prefer_github = bool(IS_OBSERVER)  # scoreboard/observer = GitHub 우선
+    prefer_github = bool(IS_OBSERVER)
 
     repo = st.secrets.get("GITHUB_REPO", "")
     branch = st.secrets.get("GITHUB_BRANCH", "main")
@@ -848,76 +777,28 @@ def load_json(path, default):
     else:
         gh_path = path
 
-    # --- 1) GitHub 로드 ---
-    gh_ok, gh_data = (False, None)
-    if repo and gh_path:
-        gh_ok, gh_data = _github_read_json(repo, branch, gh_path, token)
+    # 1) GitHub 우선(옵저버)
+    if prefer_github:
+        ok, data = _github_read_json(repo, branch, gh_path, token)
+        if ok and data is not None:
+            return data
 
-    # --- 2) 로컬 로드 ---
-    local_data = None
+    # 2) 로컬 로드
     if os.path.exists(path):
         try:
             with open(path, "r", encoding="utf-8") as f:
-                local_data = json.load(f)
+                return json.load(f)
         except Exception:
-            local_data = None
+            pass
 
-    # --- 3) sessions / players 는 병합 ---
-    if path == SESSIONS_FILE:
-        gh_sessions = gh_data if (gh_ok and isinstance(gh_data, dict)) else None
-        lc_sessions = local_data if isinstance(local_data, dict) else None
-
-        if gh_sessions is not None and lc_sessions is not None:
-            if prefer_github:
-                return merge_sessions(gh_sessions, lc_sessions)
-            else:
-                return merge_sessions(lc_sessions, gh_sessions)
-
-        if prefer_github:
-            if gh_sessions is not None:
-                return gh_sessions
-            if lc_sessions is not None:
-                return lc_sessions
-        else:
-            if lc_sessions is not None:
-                return lc_sessions
-            if gh_sessions is not None:
-                return gh_sessions
-
-        return default
-
-    if path == PLAYERS_FILE:
-        gh_players = gh_data if (gh_ok and isinstance(gh_data, list)) else None
-        lc_players = local_data if isinstance(local_data, list) else None
-
-        if gh_players is not None and lc_players is not None:
-            if prefer_github:
-                return merge_players(gh_players, lc_players)
-            else:
-                return merge_players(lc_players, gh_players)
-
-        if prefer_github:
-            if gh_players is not None:
-                return gh_players
-            if lc_players is not None:
-                return lc_players
-        else:
-            if lc_players is not None:
-                return lc_players
-            if gh_players is not None:
-                return gh_players
-
-        return default
-
-    # --- 4) 그 외 파일은 기존 우선순위 유지 ---
-    if prefer_github and gh_ok and gh_data is not None:
-        return gh_data
-    if local_data is not None:
-        return local_data
-    if (not prefer_github) and gh_ok and gh_data is not None:
-        return gh_data
+    # 3) GitHub fallback(관리자/로컬이 없을 때)
+    if not prefer_github:
+        ok, data = _github_read_json(repo, branch, gh_path, token)
+        if ok and data is not None:
+            return data
 
     return default
+
 
 def save_json(path, data):
     # ✅ 스코어보드/옵저버(읽기전용)에서는 어떤 경우에도 파일 쓰기 금지
@@ -934,35 +815,7 @@ def load_players():
 
 
 def save_players(players):
-    ok = save_json(PLAYERS_FILE, players)
-    if not ok:
-        return
-
-    # ✅ 관리자 앱: 로컬 저장 후 GitHub에도 반영(가능하면)
-    try:
-        repo = st.secrets.get("GITHUB_REPO", "")
-        branch = st.secrets.get("GITHUB_BRANCH", "main")
-        token = st.secrets.get("GITHUB_TOKEN", "")
-        if repo and token:
-            file_path = st.secrets.get("GITHUB_PLAYERS_FILE_PATH", PLAYERS_FILE)
-
-            ok2, remote = _github_read_json(repo, branch, file_path, token or None)
-            remote = remote if (ok2 and isinstance(remote, list)) else []
-
-            merged = merge_players(players, remote)
-
-            github_upsert_json_file(
-                file_path=file_path,
-                new_data=merged,
-                commit_message="Auto-sync players from Streamlit",
-            )
-
-            # 캐시 무효화(즉시 반영)
-            if hasattr(st, "cache_data"):
-                st.cache_data.clear()
-    except Exception:
-        pass
-
+    save_json(PLAYERS_FILE, players)
 
 
 def load_sessions():
@@ -970,36 +823,7 @@ def load_sessions():
 
 
 def save_sessions(sessions):
-    ok = save_json(SESSIONS_FILE, sessions)
-    if not ok:
-        return
-
-    # ✅ 관리자 앱: 로컬 저장 후 GitHub에도 반영(가능하면)
-    #   - 원격에 있는 schedule(대진)을 로컬의 빈 schedule로 덮어쓰지 않도록 병합 후 업로드
-    try:
-        repo = st.secrets.get("GITHUB_REPO", "")
-        branch = st.secrets.get("GITHUB_BRANCH", "main")
-        token = st.secrets.get("GITHUB_TOKEN", "")
-        if repo and token:
-            file_path = st.secrets.get("GITHUB_FILE_PATH", SESSIONS_FILE)
-
-            ok2, remote = _github_read_json(repo, branch, file_path, token or None)
-            remote = remote if (ok2 and isinstance(remote, dict)) else {}
-
-            merged = merge_sessions(sessions, remote)
-
-            github_upsert_json_file(
-                file_path=file_path,
-                new_data=merged,
-                commit_message="Auto-sync sessions from Streamlit",
-            )
-
-            # 캐시 무효화(즉시 반영)
-            if hasattr(st, "cache_data"):
-                st.cache_data.clear()
-    except Exception:
-        pass
-
+    save_json(SESSIONS_FILE, sessions)
 
 
 def render_static_on_mobile(df_or_styler):
@@ -6707,29 +6531,76 @@ with tab3:
                 with col_a:
                     save_to_github_clicked = st.button("✅ 경기기록 저장", use_container_width=True)
 
-                with col_b:
-                    st.caption("경기기록 생성과 수정후 꼭 버튼을 눌러주세요. 안 누르면 다 날아갑니다.저~멀리")
-
-                if save_to_github_clicked:
+                with col_                if save_to_github_clicked:
                     try:
-                        sessions = st.session_state.get("sessions", {})
-                        if not isinstance(sessions, dict):
-                            sessions = {}
+                        # ✅ 최신 sessions 확보: (1) 로컬 파일 → (2) session_state로 덮기
+                        sessions_local = {}
+                        try:
+                            if os.path.exists(SESSIONS_FILE):
+                                with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
+                                    sessions_local = json.load(f)
+                        except Exception:
+                            sessions_local = {}
 
-                        file_path = st.secrets.get("GITHUB_FILE_PATH", SESSIONS_FILE)
+                        if not isinstance(sessions_local, dict):
+                            sessions_local = {}
+
+                        sessions_state = st.session_state.get("sessions", {})
+                        if isinstance(sessions_state, dict):
+                            # state가 더 최신일 수 있으니 state 우선
+                            sessions_local.update(sessions_state)
+
+                        file_path = str(st.secrets.get("GITHUB_FILE_PATH", SESSIONS_FILE)).strip().lstrip("/")
                         repo = st.secrets.get("GITHUB_REPO", "")
                         branch = st.secrets.get("GITHUB_BRANCH", "main")
+                        token = st.secrets.get("GITHUB_TOKEN", "") or None
 
-                        ok2, remote = _github_read_json(repo, branch, file_path, st.secrets.get("GITHUB_TOKEN", "") or None)
-                        remote = remote if (ok2 and isinstance(remote, dict)) else {}
-                        merged = merge_sessions(sessions, remote)
+                        # ✅ 원격도 읽어서 병합 (빈 schedule로 덮어쓰기 방지)
+                        ok, sessions_remote = _github_read_json(repo, branch, file_path, token)
+                        if not isinstance(sessions_remote, dict):
+                            sessions_remote = {}
 
-                        res = github_upsert_json_file(
+                        def _merge_day(remote_day: dict, local_day: dict) -> dict:
+                            remote_day = remote_day if isinstance(remote_day, dict) else {}
+                            local_day = local_day if isinstance(local_day, dict) else {}
+                            out = dict(remote_day)
+                            out.update(local_day)
+
+                            # ✅ schedule 보호: 로컬 schedule이 비어있으면 원격 schedule을 유지
+                            rsch = remote_day.get("schedule")
+                            lsch = local_day.get("schedule")
+                            if (not lsch) and rsch:
+                                out["schedule"] = rsch
+
+                            # ✅ groups_snapshot도 동일하게 보호
+                            if (not local_day.get("groups_snapshot")) and remote_day.get("groups_snapshot"):
+                                out["groups_snapshot"] = remote_day.get("groups_snapshot")
+
+                            return out
+
+                        merged = dict(sessions_remote)
+                        for d, lday in sessions_local.items():
+                            merged[d] = _merge_day(sessions_remote.get(d, {}), lday)
+
+                        github_upsert_json_file(
                             file_path=file_path,
                             new_data=merged,
                             commit_message="Save match sessions from Streamlit",
+                            repo=repo,
+                            branch=branch,
+                            token=token,
                         )
-                        st.success("저장 완료! (커밋 생성됨)")
+
+                        # ✅ 캐시 초기화 (스코어보드가 바로 최신 읽게)
+                        try:
+                            _github_read_json.clear()
+                        except Exception:
+                            pass
+
+                        st.success(f"저장 완료! (GitHub: {file_path})")
+                    except Exception as e:
+                        st.error(f"저장 실패: {e}")
+생성됨)")
 
                     except Exception as e:
                         st.error(f"저장 실패: {e}")
