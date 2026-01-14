@@ -5869,7 +5869,7 @@ with tab3:
                 )
 
                 # ✅ 선택값 저장(다음에 다시 들어와도 유지)
-                if view_mode_scores != saved_view:
+                if (not IS_OBSERVER) and (view_mode_scores != saved_view):
                     day_data["score_view_mode"] = view_mode_scores
                     sessions[sel_date] = day_data
                     st.session_state.sessions = sessions
