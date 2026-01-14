@@ -740,14 +740,90 @@ def build_daily_report(sel_date, day_data):
 # ---------------------------------------------------------
 # 파일 입출력
 # ---------------------------------------------------------
-def load_json(path, default):
-    if not os.path.exists(path):
-        return default
+def _cache_data(ttl=15):
+    """Streamlit 버전 호환용 cache decorator"""
+    if hasattr(st, "cache_data"):
+        try:
+            return st.cache_data(ttl=ttl)
+        except Exception:
+            return st.cache_data
+    if hasattr(st, "cache"):
+        try:
+            return st.cache(ttl=ttl)
+        except Exception:
+            return st.cache
+    def _deco(fn):
+        return fn
+    return _deco
+
+
+@_cache_data(ttl=15)
+def _github_read_json(repo: str, branch: str, file_path: str, token: str | None):
+    """GitHub Contents API로 JSON 파일을 읽어온다. (성공: (True,data) / 실패: (False,None))"""
+    if not repo or not file_path:
+        return (False, None)
+
+    file_path = str(file_path).lstrip("/")
+    api = f"https://api.github.com/repos/{repo}/contents/{file_path}"
+    headers = {"Accept": "application/vnd.github+json"}
+    if token:
+        headers["Authorization"] = f"token {token}"
+
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        r = requests.get(api, headers=headers, params={"ref": branch}, timeout=20)
+        if r.status_code != 200:
+            return (False, None)
+        j = r.json()
+        content_b64 = j.get("content", "")
+        if not content_b64:
+            return (False, None)
+        raw = base64.b64decode(content_b64).decode("utf-8")
+        return (True, json.loads(raw))
     except Exception:
-        return default
+        return (False, None)
+
+
+def load_json(path, default):
+    """
+    ✅ admin 모드: 로컬 우선 → (없으면) GitHub fallback
+    ✅ observer 모드: GitHub 우선 → (실패시) 로컬 fallback
+    """
+    prefer_github = bool(IS_OBSERVER)
+
+    repo = st.secrets.get("GITHUB_REPO", "")
+    branch = st.secrets.get("GITHUB_BRANCH", "main")
+    token = st.secrets.get("GITHUB_TOKEN", "")
+    token = token if token else None
+
+    # 파일별 GitHub 경로(기존 secrets 키 그대로 사용)
+    if path == SESSIONS_FILE:
+        gh_path = st.secrets.get("GITHUB_FILE_PATH", SESSIONS_FILE)
+    elif path == PLAYERS_FILE:
+        gh_path = st.secrets.get("GITHUB_PLAYERS_FILE_PATH", PLAYERS_FILE)
+    else:
+        gh_path = path
+
+    # 1) GitHub 우선(옵저버)
+    if prefer_github:
+        ok, data = _github_read_json(repo, branch, gh_path, token)
+        if ok and data is not None:
+            return data
+
+    # 2) 로컬 로드
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+
+    # 3) GitHub fallback(관리자/로컬이 없을 때)
+    if not prefer_github:
+        ok, data = _github_read_json(repo, branch, gh_path, token)
+        if ok and data is not None:
+            return data
+
+    return default
 
 
 def save_json(path, data):
