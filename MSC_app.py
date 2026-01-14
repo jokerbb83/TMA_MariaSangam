@@ -6860,40 +6860,37 @@ with tab3:
                                       return;
                                     }}
 
-                                    const kids = Array.from(common.children);
-                                    const si = kids.indexOf(startTop);
-                                    const ei = kids.indexOf(endTop);
+                                    // ✅ 캔버스 기반(DataFrame)도 제대로 캡처되도록 "복사(clone)" 대신
+//    실제 DOM을 대상으로 범위(y/height)만 잘라서 캡처한다.
+const commonRect = common.getBoundingClientRect();
+const startRect = start.getBoundingClientRect();
+const endRect   = end.getBoundingClientRect();
 
-                                    if (si < 0 || ei < 0 || ei <= si) {{
-                                      setMsg("캡처 범위 인덱스 오류");
-                                      return;
-                                    }}
+const y0 = startRect.top - commonRect.top;
+const y1 = endRect.top   - commonRect.top;
 
-                                    const wrapper = pdoc.createElement("div");
-                                    wrapper.style.position = "fixed";
-                                    wrapper.style.left = "-100000px";
-                                    wrapper.style.top = "0";
-                                    wrapper.style.background = "#ffffff";
-                                    wrapper.style.width = (common.clientWidth || 1200) + "px";
-                                    wrapper.style.padding = "0";
-                                    wrapper.style.margin = "0";
+const w = Math.ceil(commonRect.width || (common.clientWidth || 1200));
+const h = Math.ceil(y1 - y0);
 
-                                    for (let i = si + 1; i < ei; i++) {{
-                                      wrapper.appendChild(kids[i].cloneNode(true));
-                                    }}
+if (!(h > 0)) {{
+  setMsg("캡처 범위 계산 오류");
+  return;
+}}
 
-                                    pdoc.body.appendChild(wrapper);
+const h2c = await ensureHtml2Canvas();
+const canvas = await h2c(common, {{
+  backgroundColor: "#ffffff",
+  scale: 2,
+  useCORS: true,
+  x: 0,
+  y: y0,
+  width: w,
+  height: h,
+  scrollX: -(window.parent.pageXOffset || 0),
+  scrollY: -(window.parent.pageYOffset || 0),
+}});
 
-                                    const h2c = await ensureHtml2Canvas();
-                                    const canvas = await h2c(wrapper, {{
-                                      backgroundColor: "#ffffff",
-                                      scale: 2,
-                                      useCORS: true
-                                    }});
-
-                                    wrapper.remove();
-
-                                    const url = canvas.toDataURL("image/jpeg", 0.95);
+const url = canvas.toDataURL("image/jpeg", 0.95);
                                     const a = pdoc.createElement("a");
                                     a.href = url;
                                     a.download = fileName;
@@ -7113,40 +7110,37 @@ with tab3:
                                       return;
                                     }}
 
-                                    const kids = Array.from(common.children);
-                                    const si = kids.indexOf(startTop);
-                                    const ei = kids.indexOf(endTop);
+                                    // ✅ 캔버스 기반(DataFrame)도 제대로 캡처되도록 "복사(clone)" 대신
+//    실제 DOM을 대상으로 범위(y/height)만 잘라서 캡처한다.
+const commonRect = common.getBoundingClientRect();
+const startRect = start.getBoundingClientRect();
+const endRect   = end.getBoundingClientRect();
 
-                                    if (si < 0 || ei < 0 || ei <= si) {{
-                                      setMsg("캡처 범위 인덱스 오류");
-                                      return;
-                                    }}
+const y0 = startRect.top - commonRect.top;
+const y1 = endRect.top   - commonRect.top;
 
-                                    const wrapper = pdoc.createElement("div");
-                                    wrapper.style.position = "fixed";
-                                    wrapper.style.left = "-100000px";
-                                    wrapper.style.top = "0";
-                                    wrapper.style.background = "#ffffff";
-                                    wrapper.style.width = (common.clientWidth || 1200) + "px";
-                                    wrapper.style.padding = "0";
-                                    wrapper.style.margin = "0";
+const w = Math.ceil(commonRect.width || (common.clientWidth || 1200));
+const h = Math.ceil(y1 - y0);
 
-                                    for (let i = si + 1; i < ei; i++) {{
-                                      wrapper.appendChild(kids[i].cloneNode(true));
-                                    }}
+if (!(h > 0)) {{
+  setMsg("캡처 범위 계산 오류");
+  return;
+}}
 
-                                    pdoc.body.appendChild(wrapper);
+const h2c = await ensureHtml2Canvas();
+const canvas = await h2c(common, {{
+  backgroundColor: "#ffffff",
+  scale: 2,
+  useCORS: true,
+  x: 0,
+  y: y0,
+  width: w,
+  height: h,
+  scrollX: -(window.parent.pageXOffset || 0),
+  scrollY: -(window.parent.pageYOffset || 0),
+}});
 
-                                    const h2c = await ensureHtml2Canvas();
-                                    const canvas = await h2c(wrapper, {{
-                                      backgroundColor: "#ffffff",
-                                      scale: 2,
-                                      useCORS: true
-                                    }});
-
-                                    wrapper.remove();
-
-                                    const url = canvas.toDataURL("image/jpeg", 0.95);
+const url = canvas.toDataURL("image/jpeg", 0.95);
                                     const a = pdoc.createElement("a");
                                     a.href = url;
                                     a.download = fileName;
@@ -7882,40 +7876,37 @@ with tab5:
                               return;
                             }}
 
-                            const kids = Array.from(common.children);
-                            const si = kids.indexOf(startTop);
-                            const ei = kids.indexOf(endTop);
+                            // ✅ 캔버스 기반(DataFrame)도 제대로 캡처되도록 "복사(clone)" 대신
+//    실제 DOM을 대상으로 범위(y/height)만 잘라서 캡처한다.
+const commonRect = common.getBoundingClientRect();
+const startRect = start.getBoundingClientRect();
+const endRect   = end.getBoundingClientRect();
 
-                            if (si < 0 || ei < 0 || ei <= si) {{
-                              setMsg("캡처 범위 인덱스 오류");
-                              return;
-                            }}
+const y0 = startRect.top - commonRect.top;
+const y1 = endRect.top   - commonRect.top;
 
-                            const wrapper = pdoc.createElement("div");
-                            wrapper.style.position = "fixed";
-                            wrapper.style.left = "-100000px";
-                            wrapper.style.top = "0";
-                            wrapper.style.background = "#ffffff";
-                            wrapper.style.width = (common.clientWidth || 1200) + "px";
-                            wrapper.style.padding = "0";
-                            wrapper.style.margin = "0";
+const w = Math.ceil(commonRect.width || (common.clientWidth || 1200));
+const h = Math.ceil(y1 - y0);
 
-                            for (let i = si + 1; i < ei; i++) {{
-                              wrapper.appendChild(kids[i].cloneNode(true));
-                            }}
+if (!(h > 0)) {{
+  setMsg("캡처 범위 계산 오류");
+  return;
+}}
 
-                            pdoc.body.appendChild(wrapper);
+const h2c = await ensureHtml2Canvas();
+const canvas = await h2c(common, {{
+  backgroundColor: "#ffffff",
+  scale: 2,
+  useCORS: true,
+  x: 0,
+  y: y0,
+  width: w,
+  height: h,
+  scrollX: -(window.parent.pageXOffset || 0),
+  scrollY: -(window.parent.pageYOffset || 0),
+}});
 
-                            const h2c = await ensureHtml2Canvas();
-                            const canvas = await h2c(wrapper, {{
-                              backgroundColor: "#ffffff",
-                              scale: 2,
-                              useCORS: true
-                            }});
-
-                            wrapper.remove();
-
-                            const url = canvas.toDataURL("image/jpeg", 0.95);
+const url = canvas.toDataURL("image/jpeg", 0.95);
                             const a = pdoc.createElement("a");
                             a.href = url;
                             a.download = fileName;
