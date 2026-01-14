@@ -7807,11 +7807,66 @@ with tab5:
                     if not has_any:
                         st.info("A조 / B조로 나눠서 표시할 데이터가 없습니다.")
 
+                                # ✅ 캡처용(전체 행 포함) 정적 HTML 테이블 렌더(화면 밖)
+                club_title_for_capture = "마리아상암포바 도우미 (Beta)"
+                month_title_for_capture = f"{sel_month} 월간 순위표"
+                rank_capture_inner = ""
+                if rank_view_mode == "전체":
+                    if "sty_rank" in locals() and sty_rank is not None:
+                        try:
+                            rank_capture_inner = sty_rank.to_html()
+                        except Exception:
+                            rank_capture_inner = ""
+                else:
+                    parts = []
+                    if "sty_A" in locals() and sty_A is not None:
+                        try:
+                            parts.append("<h3 style='margin:18px 0 8px 0; font-size:22px; font-weight:900;'>🟥 A조 월간 선수 순위표</h3>" + sty_A.to_html())
+                        except Exception:
+                            pass
+                    if "sty_B" in locals() and sty_B is not None:
+                        try:
+                            parts.append("<h3 style='margin:24px 0 8px 0; font-size:22px; font-weight:900;'>🟦 B조 월간 선수 순위표</h3>" + sty_B.to_html())
+                        except Exception:
+                            pass
+                    rank_capture_inner = "".join(parts)
+
+                render_html = f"""
+                <div id=\"{rank_capture_id}__render\" class=\"rank-capture-wrap\" style=\"
+                    position: fixed; left: -10000px; top: 0;
+                    background: #ffffff; color: #111827;
+                    padding: 24px 28px;
+                    width: 1200px;
+                    box-sizing: border-box;
+                \">
+                  <div style=\"font-size:30px; font-weight:900; margin:0 0 6px 0;\">{club_title_for_capture}</div>
+                  <div style=\"font-size:20px; font-weight:800; margin:0 0 18px 0;\">{month_title_for_capture}</div>
+
+                  <style>
+                    .rank-capture-wrap table {
+                      width: 100% !important;
+                      border-collapse: collapse !important;
+                    }
+                    .rank-capture-wrap th, .rank-capture-wrap td {
+                      border: 1px solid #e5e7eb !important;
+                      padding: 8px 10px !important;
+                      font-size: 14px !important;
+                    }
+                    .rank-capture-wrap th {
+                      background: #f9fafb !important;
+                      font-weight: 800 !important;
+                    }
+                  </style>
+
+                  {rank_capture_inner if rank_capture_inner else "<div style='padding:18px; color:#6b7280;'>표시할 데이터가 없습니다.</div>"}
+                </div>
+                """
+                st.markdown(render_html, unsafe_allow_html=True)
+
                 st.markdown(f'<div id="{rank_capture_id}__end"></div>', unsafe_allow_html=True)
 
                 components.html(
-                    f"""
-                    <div style="display:flex; gap:12px; margin-top:12px; align-items:center;">
+                    f"""                    <div style="display:flex; gap:12px; margin-top:12px; align-items:center;">
                       <button id="{rank_capture_id}__save"
                         style="padding:10px 14px; border-radius:12px;
                                border:1px solid #10b981; background:#10b981; color:white;
@@ -7852,61 +7907,39 @@ with tab5:
                             setMsg("이미지 생성중…");
                             const pdoc = window.parent.document;
 
-                            const start = pdoc.getElementById(capId + "__start");
-                            const end   = pdoc.getElementById(capId + "__end");
-                            if (!start || !end) {{
-                              setMsg("캡처 마커를 찾지 못했어.");
+                            const render = pdoc.getElementById(capId + "__render");
+                            if (!render) {{
+                              setMsg("캡처 영역을 찾지 못했어.");
                               return;
                             }}
 
-                            const startTop = start.closest('div[data-testid="stElementContainer"]')
-                                          || start.closest('div.element-container')
-                                          || start.parentElement;
+                            // 렌더 안정화
+                            await new Promise(r => setTimeout(r, 60));
 
-                            const endTop   = end.closest('div[data-testid="stElementContainer"]')
-                                          || end.closest('div.element-container')
-                                          || end.parentElement;
+                            const rect = render.getBoundingClientRect();
+                            const w = Math.ceil(render.scrollWidth  || rect.width  || 1200);
+                            const h = Math.ceil(render.scrollHeight || rect.height || 800);
 
-                            let common = startTop ? startTop.parentElement : null;
-                            while (common && endTop && !common.contains(endTop)) {{
-                              common = common.parentElement;
-                            }}
-                            if (!common) {{
-                              setMsg("캡처 공통 부모를 찾지 못했어.");
+                            if (!(w > 0 && h > 0)) {{
+                              setMsg("캡처 크기 계산 오류");
                               return;
                             }}
 
-                            // ✅ 캔버스 기반(DataFrame)도 제대로 캡처되도록 "복사(clone)" 대신
-//    실제 DOM을 대상으로 범위(y/height)만 잘라서 캡처한다.
-const commonRect = common.getBoundingClientRect();
-const startRect = start.getBoundingClientRect();
-const endRect   = end.getBoundingClientRect();
+                            const h2c = await ensureHtml2Canvas();
+                            const canvas = await h2c(render, {{
+                              backgroundColor: "#ffffff",
+                              scale: 2,
+                              useCORS: true,
+                              width: w,
+                              height: h,
+                              windowWidth: w,
+                              windowHeight: h,
+                              scrollX: 0,
+                              scrollY: 0,
+                            }});
 
-const y0 = startRect.top - commonRect.top;
-const y1 = endRect.top   - commonRect.top;
+                            const url = canvas.toDataURL("image/jpeg", 0.95);
 
-const w = Math.ceil(commonRect.width || (common.clientWidth || 1200));
-const h = Math.ceil(y1 - y0);
-
-if (!(h > 0)) {{
-  setMsg("캡처 범위 계산 오류");
-  return;
-}}
-
-const h2c = await ensureHtml2Canvas();
-const canvas = await h2c(common, {{
-  backgroundColor: "#ffffff",
-  scale: 2,
-  useCORS: true,
-  x: 0,
-  y: y0,
-  width: w,
-  height: h,
-  scrollX: -(window.parent.pageXOffset || 0),
-  scrollY: -(window.parent.pageYOffset || 0),
-}});
-
-const url = canvas.toDataURL("image/jpeg", 0.95);
                             const a = pdoc.createElement("a");
                             a.href = url;
                             a.download = fileName;
