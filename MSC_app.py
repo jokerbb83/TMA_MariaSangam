@@ -2888,13 +2888,6 @@ def render_tab_player_manage(tab):
     with tab:
         st.header("🧾 선수 정보 관리")
 
-        # ✅ roster는 session_state가 단일 소스 (UnboundLocalError 방지)
-        roster = st.session_state.get("roster")
-        if not isinstance(roster, list):
-            roster = load_players()
-            st.session_state["roster"] = roster
-
-
         st.subheader("등록된 선수 목록")
         if roster:
             df = pd.DataFrame(roster)
@@ -3152,6 +3145,13 @@ def render_tab_player_manage(tab):
             for k, v in st.session_state["_widget_pending"].items():
                 st.session_state[k] = v
             st.session_state.pop("_widget_pending", None)
+
+        # ✅ roster는 session_state가 단일 소스
+        if "roster" not in st.session_state or not isinstance(st.session_state.get("roster"), list):
+            st.session_state.roster = roster
+        roster = st.session_state.roster
+
+
         names = sorted([p.get("name", "") for p in roster if p.get("name")], key=lambda x: x)
         options = ["선택 안함"] + names
 
@@ -7545,6 +7545,112 @@ with tab5:
                 st.info("이 달에 경기 기록이 없습니다.")
             else:
                 # =========================================================
+                # ---------------------------------------------------------
+                # ✅ 집계는 '항상 전체 기준'으로 1번만 만든다 (옵저버 포함)
+                #    - 출석일수/경기수: 점수 없어도(결과 None) 참여하면 카운트
+                #    - 승/무/패/점수/득실: 점수가 있을 때만 반영
+                # ---------------------------------------------------------
+                def make_recs():
+                    return defaultdict(
+                        lambda: {
+                            "days": set(),          # 출석 날짜들
+                            "G": 0,                 # 참여 경기수(점수 없어도 포함)
+                            "W": 0,
+                            "D": 0,
+                            "L": 0,
+                            "points": 0,
+                            "score_for": 0,
+                            "score_against": 0,
+                        }
+                    )
+
+                recs_all = make_recs()
+                partners_by_player = defaultdict(set)
+
+                def update_recs(target_recs, d, t1, t2, s1, s2, r):
+                    players_all = t1 + t2
+
+                    # 1) 출석/경기수(참여) — 점수 없어도 카운트
+                    for p in players_all:
+                        if is_guest_name(p, roster):
+                            continue
+                        target_recs[p]["days"].add(d)
+                        target_recs[p]["G"] += 1
+
+                    # 2) 점수 없으면 여기서 종료 (승/무/패/득실은 미반영)
+                    if r is None:
+                        return
+
+                    # 3) 득/실 (점수 있을 때만)
+                    s1_val = s1 if (s1 is not None) else 0
+                    s2_val = s2 if (s2 is not None) else 0
+
+                    for p in t1:
+                        if is_guest_name(p, roster):
+                            continue
+                        target_recs[p]["score_for"] += s1_val
+                        target_recs[p]["score_against"] += s2_val
+
+                    for p in t2:
+                        if is_guest_name(p, roster):
+                            continue
+                        target_recs[p]["score_for"] += s2_val
+                        target_recs[p]["score_against"] += s1_val
+
+                    # 4) 승/무/패 + 점수
+                    if r == "W":
+                        for p in t1:
+                            if is_guest_name(p, roster):
+                                continue
+                            target_recs[p]["W"] += 1
+                            target_recs[p]["points"] += WIN_POINT
+                        for p in t2:
+                            if is_guest_name(p, roster):
+                                continue
+                            target_recs[p]["L"] += 1
+                            target_recs[p]["points"] += LOSE_POINT
+
+                    elif r == "L":
+                        for p in t1:
+                            if is_guest_name(p, roster):
+                                continue
+                            target_recs[p]["L"] += 1
+                            target_recs[p]["points"] += LOSE_POINT
+                        for p in t2:
+                            if is_guest_name(p, roster):
+                                continue
+                            target_recs[p]["W"] += 1
+                            target_recs[p]["points"] += WIN_POINT
+
+                    else:  # "D"
+                        for p in players_all:
+                            if is_guest_name(p, roster):
+                                continue
+                            target_recs[p]["D"] += 1
+                            target_recs[p]["points"] += DRAW_POINT
+
+                # ---------------------------------------------------------
+                # 1-1) 월간 데이터 집계 (전체 기준 1회)
+                # ---------------------------------------------------------
+                for d, idx, g in month_games:
+                    t1, t2 = g["t1"], g["t2"]
+                    s1, s2 = g["score1"], g["score2"]
+                    r = calc_result(s1, s2)  # 점수 없으면 None
+
+                    # 전체 기록(참여는 항상, 결과는 점수 있을 때만)
+                    update_recs(recs_all, d, t1, t2, s1, s2, r)
+
+                    # 🤝 파트너 집계 (점수 없어도 복식이면 파트너는 만난 걸로)
+                    for team in (t1, t2):
+                        if len(team) >= 2:
+                            for i, p in enumerate(team):
+                                if is_guest_name(p, roster):
+                                    continue
+                                for j, q in enumerate(team):
+                                    if i == j:
+                                        continue
+                                    partners_by_player[p].add(guest_bucket(q, roster))
+
                 if not IS_OBSERVER:
                     # 1. 월간 선수 순위표
                     # =========================================================
@@ -7556,112 +7662,6 @@ with tab5:
                         horizontal=True,
                         key="month_rank_view_mode",
                     )
-
-                    # ---------------------------------------------------------
-                    # ✅ 집계는 '항상 전체 기준'으로 1번만 만든다
-                    #    - 출석일수/경기수: 점수 없어도(결과 None) 참여하면 카운트
-                    #    - 승/무/패/점수/득실: 점수가 있을 때만 반영
-                    # ---------------------------------------------------------
-                    def make_recs():
-                        return defaultdict(
-                            lambda: {
-                                "days": set(),          # 출석 날짜들
-                                "G": 0,                 # 참여 경기수(점수 없어도 포함)
-                                "W": 0,
-                                "D": 0,
-                                "L": 0,
-                                "points": 0,
-                                "score_for": 0,
-                                "score_against": 0,
-                            }
-                        )
-
-                    recs_all = make_recs()
-                    partners_by_player = defaultdict(set)
-
-                    def update_recs(target_recs, d, t1, t2, s1, s2, r):
-                        players_all = t1 + t2
-
-                        # 1) 출석/경기수(참여) — 점수 없어도 카운트
-                        for p in players_all:
-                            if is_guest_name(p, roster):
-                                continue
-                            target_recs[p]["days"].add(d)
-                            target_recs[p]["G"] += 1
-
-                        # 2) 점수 없으면 여기서 종료 (승/무/패/득실은 미반영)
-                        if r is None:
-                            return
-
-                        # 3) 득/실 (점수 있을 때만)
-                        s1_val = s1 if (s1 is not None) else 0
-                        s2_val = s2 if (s2 is not None) else 0
-
-                        for p in t1:
-                            if is_guest_name(p, roster):
-                                continue
-                            target_recs[p]["score_for"] += s1_val
-                            target_recs[p]["score_against"] += s2_val
-
-                        for p in t2:
-                            if is_guest_name(p, roster):
-                                continue
-                            target_recs[p]["score_for"] += s2_val
-                            target_recs[p]["score_against"] += s1_val
-
-                        # 4) 승/무/패 + 점수
-                        if r == "W":
-                            for p in t1:
-                                if is_guest_name(p, roster):
-                                    continue
-                                target_recs[p]["W"] += 1
-                                target_recs[p]["points"] += WIN_POINT
-                            for p in t2:
-                                if is_guest_name(p, roster):
-                                    continue
-                                target_recs[p]["L"] += 1
-                                target_recs[p]["points"] += LOSE_POINT
-
-                        elif r == "L":
-                            for p in t1:
-                                if is_guest_name(p, roster):
-                                    continue
-                                target_recs[p]["L"] += 1
-                                target_recs[p]["points"] += LOSE_POINT
-                            for p in t2:
-                                if is_guest_name(p, roster):
-                                    continue
-                                target_recs[p]["W"] += 1
-                                target_recs[p]["points"] += WIN_POINT
-
-                        else:  # "D"
-                            for p in players_all:
-                                if is_guest_name(p, roster):
-                                    continue
-                                target_recs[p]["D"] += 1
-                                target_recs[p]["points"] += DRAW_POINT
-
-                    # ---------------------------------------------------------
-                    # 1-1) 월간 데이터 집계 (전체 기준 1회)
-                    # ---------------------------------------------------------
-                    for d, idx, g in month_games:
-                        t1, t2 = g["t1"], g["t2"]
-                        s1, s2 = g["score1"], g["score2"]
-                        r = calc_result(s1, s2)  # 점수 없으면 None
-
-                        # 전체 기록(참여는 항상, 결과는 점수 있을 때만)
-                        update_recs(recs_all, d, t1, t2, s1, s2, r)
-
-                        # 🤝 파트너 집계 (점수 없어도 복식이면 파트너는 만난 걸로)
-                        for team in (t1, t2):
-                            if len(team) >= 2:
-                                for i, p in enumerate(team):
-                                    if is_guest_name(p, roster):
-                                        continue
-                                    for j, q in enumerate(team):
-                                        if i == j:
-                                            continue
-                                        partners_by_player[p].add(guest_bucket(q, roster))
 
                     # ---------------------------------------------------------
                     # ✅ "조별 보기"는 선수만 A/B로 분리 (집계는 동일 recs_all)
