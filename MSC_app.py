@@ -6712,12 +6712,14 @@ with tab3:
                         def build_fixture_text_by_round(schedule_list):
                             """
                             schedule: [(gtype, t1, t2, court), ...]
-                            출력 포맷:
-                              1게임.1코트 A,B vs C,D
-                              1게임.2코트 E,F vs G,H
+                            출력 포맷(예):
+                              1게임1코트 A,B vs C,D
+                              1게임2코트 E,F vs G,H
+                              쉬는사람: I,J
 
-                              2게임.1코트 ...
-                              2게임.2코트 ...
+                              2게임1코트 ...
+                              2게임2코트 ...
+                              쉬는사람: ...
                             """
                             if not schedule_list:
                                 return ""
@@ -6726,29 +6728,61 @@ with tab3:
                             courts = []
                             for item in schedule_list:
                                 try:
-                                    courts.append(int(item[3]))
+                                    c = item[3]
+                                    courts.append(int(c))
                                 except Exception:
-                                    pass
+                                    continue
+
                             court_count = len(sorted(set(courts))) if courts else 1
                             if court_count <= 0:
                                 court_count = 1
 
+                            def _team_list(x):
+                                """팀(선수) 이름을 리스트로 정규화"""
+                                if isinstance(x, (list, tuple)):
+                                    return [str(v).strip() for v in x if str(v).strip()]
+                                s = re.sub(r"<[^>]*>", "", str(x)).strip()
+                                s = re.sub(r"\s+", " ", s).strip()
+                                return [p.strip() for p in s.split(" ") if p.strip()]
+
+                            # ✅ 전체 참가자(대진표 전체에서 등장한 순서대로)
+                            all_names = []
+                            seen = set()
+                            for _, t1, t2, _ in schedule_list:
+                                for nm in _team_list(t1) + _team_list(t2):
+                                    if nm and nm not in seen:
+                                        seen.add(nm)
+                                        all_names.append(nm)
+
                             lines = []
-                            prev_round = None
+                            total_rounds = (len(schedule_list) + court_count - 1) // court_count
 
-                            for i, (gtype, t1, t2, court) in enumerate(schedule_list):
-                                round_no = (i // court_count) + 1
+                            for round_no in range(1, total_rounds + 1):
+                                start = (round_no - 1) * court_count
+                                end = min(round_no * court_count, len(schedule_list))
+                                chunk = schedule_list[start:end]
+                                if not chunk:
+                                    continue
 
-                                try:
-                                    court_no = int(court)
-                                except Exception:
-                                    court_no = (i % court_count) + 1
+                                playing = set()
 
-                                if prev_round is not None and round_no != prev_round:
-                                    lines.append("")  # ✅ 게임 바뀌면 빈 줄 1개(=두줄 띄기 효과)
+                                for i, (gtype, t1, t2, court) in enumerate(chunk):
+                                    try:
+                                        court_no = int(court)
+                                    except Exception:
+                                        court_no = i + 1
 
-                                lines.append(f"{round_no}게임.{court_no}코트 {_team_join(t1)} vs {_team_join(t2)}")
-                                prev_round = round_no
+                                    for nm in _team_list(t1) + _team_list(t2):
+                                        if nm:
+                                            playing.add(nm)
+
+                                    lines.append(
+                                        f"{round_no}게임{court_no}코트 {_team_join(t1)} vs {_team_join(t2)}"
+                                    )
+
+                                bench = [nm for nm in all_names if nm not in playing]
+                                lines.append("쉬는사람: " + (",".join(bench) if bench else "없음"))
+                                lines.append("")  # ✅ 한 칸 띄우고 다음 게임
 
                             return "\n".join(lines).strip()
 
