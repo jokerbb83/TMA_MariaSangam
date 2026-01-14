@@ -6600,7 +6600,6 @@ with tab3:
                         st.success(f"저장 완료! (GitHub: {file_path})")
                     except Exception as e:
                         st.error(f"저장 실패: {e}")
-생성됨)")
 
                     except Exception as e:
                         st.error(f"저장 실패: {e}")
