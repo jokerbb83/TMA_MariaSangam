@@ -257,6 +257,11 @@ st.markdown("""
   padding-bottom:2px;
 }
 .msa-game-line b{ white-space:nowrap; }
+
+.msa-round-divider{
+  border-top:1px solid rgba(148,163,184,0.55);
+  margin:14px 0;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -5671,47 +5676,25 @@ def render_tab_today_session(tab):
         if schedule:
             st.markdown("### ✅ 오늘 대진표 미리보기")
 
-            if view_mode_for_schedule == "조별 분리 (A/B조)":
-                sched_A = [(gt, t1, t2, court) for (gt, t1, t2, court) in schedule if int(court) % 2 == 1]
-                sched_B = [(gt, t1, t2, court) for (gt, t1, t2, court) in schedule if int(court) % 2 == 0]
 
-                if sched_A:
-                    st.markdown("#### 🅰️ A조 (홀수 코트)")
-                    for i, (gt, t1, t2, court) in enumerate(sched_A, start=1):
-                        t1_badges = "".join(render_name_badge(n, roster_by_name) for n in t1)
-                        t2_badges = "".join(render_name_badge(n, roster_by_name) for n in t2)
-                        st.markdown(
-                            f"""
-                            <div class="msa-game-row">
-                              <div class="msa-game-meta">#{i} · 코트 {court} · {gt}</div>
-                              <div class="msa-game-line">
-                                <b>{t1_badges}</b> <span style="margin:0 6px;font-weight:800;">vs</span> <b>{t2_badges}</b>
-                              </div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True,
-                        )
+            # ✅ 게임(라운드) 단위 경계선 (코트 사이 X / 게임 사이 O)
+            def _render_preview_rows(_sched_list, _fallback_group_size: int = 0):
+                if not _sched_list:
+                    return
 
-                if sched_B:
-                    st.markdown("#### 🅱️ B조 (짝수 코트)")
-                    for i, (gt, t1, t2, court) in enumerate(sched_B, start=1):
-                        t1_badges = "".join(render_name_badge(n, roster_by_name) for n in t1)
-                        t2_badges = "".join(render_name_badge(n, roster_by_name) for n in t2)
-                        st.markdown(
-                            f"""
-                            <div class="msa-game-row">
-                              <div class="msa-game-meta">#{i} · 코트 {court} · {gt}</div>
-                              <div class="msa-game-line">
-                                <b>{t1_badges}</b> <span style="margin:0 6px;font-weight:800;">vs</span> <b>{t2_badges}</b>
-                              </div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True,
-                        )
-            else:
-                for i, (gt, t1, t2, court) in enumerate(schedule, start=1):
+                n_total = len(_sched_list)
+
+                # fallback: court_count 기반 그룹 크기 (필요할 때만 사용)
+                try:
+                    grp = int(_fallback_group_size)
+                except Exception:
+                    grp = 0
+                grp = max(0, grp)
+
+                for i, (gt, t1, t2, court) in enumerate(_sched_list, start=1):
                     t1_badges = "".join(render_name_badge(n, roster_by_name) for n in t1)
                     t2_badges = "".join(render_name_badge(n, roster_by_name) for n in t2)
+
                     st.markdown(
                         f"""
                         <div class="msa-game-row">
@@ -5723,6 +5706,45 @@ def render_tab_today_session(tab):
                         """,
                         unsafe_allow_html=True,
                     )
+
+                    # 다음 코트 번호가 리셋(작아짐/같아짐)되면 "다음 게임"으로 판단 → 이때만 경계선
+                    if i != n_total:
+                        try:
+                            cur_c = int(court)
+                        except Exception:
+                            cur_c = None
+                        try:
+                            nxt_c = int(_sched_list[i][3])  # 다음 항목의 court
+                        except Exception:
+                            nxt_c = None
+
+                        is_new_game = False
+                        if (cur_c is not None) and (nxt_c is not None) and (nxt_c < cur_c):
+                            is_new_game = True
+                        elif grp > 0 and (i % grp == 0):
+                            is_new_game = True
+
+                        if is_new_game:
+                            st.markdown('<div class="msa-round-divider"></div>', unsafe_allow_html=True)
+
+            if view_mode_for_schedule == "조별 분리 (A/B조)":
+                sched_A = [(gt, t1, t2, court) for (gt, t1, t2, court) in schedule if int(court) % 2 == 1]
+                sched_B = [(gt, t1, t2, court) for (gt, t1, t2, court) in schedule if int(court) % 2 == 0]
+
+                # A/B 조별 분리 시, 한 게임당 코트 수(홀수/짝수)를 fallback 으로 사용
+                odd_cnt = sum(1 for c in range(1, int(court_count) + 1) if c % 2 == 1)
+                even_cnt = sum(1 for c in range(1, int(court_count) + 1) if c % 2 == 0)
+
+                if sched_A:
+                    st.markdown("#### 🅰️ A조 (홀수 코트)")
+                    _render_preview_rows(sched_A, odd_cnt)
+
+                if sched_B:
+                    st.markdown("#### 🅱️ B조 (짝수 코트)")
+                    _render_preview_rows(sched_B, even_cnt)
+
+            else:
+                _render_preview_rows(schedule, int(court_count))
 
             st.markdown("### 👤 인당 경기수")
             cnt = count_player_games(schedule)
@@ -6690,14 +6712,12 @@ with tab3:
                         def build_fixture_text_by_round(schedule_list):
                             """
                             schedule: [(gtype, t1, t2, court), ...]
-                            출력 포맷(예):
-                              1게임1코트 A,B vs C,D
-                              1게임2코트 E,F vs G,H
-                              쉬는사람: I,J
+                            출력 포맷:
+                              1게임.1코트 A,B vs C,D
+                              1게임.2코트 E,F vs G,H
 
-                              2게임1코트 ...
-                              2게임2코트 ...
-                              쉬는사람: ...
+                              2게임.1코트 ...
+                              2게임.2코트 ...
                             """
                             if not schedule_list:
                                 return ""
@@ -6706,61 +6726,29 @@ with tab3:
                             courts = []
                             for item in schedule_list:
                                 try:
-                                    c = item[3]
-                                    courts.append(int(c))
+                                    courts.append(int(item[3]))
                                 except Exception:
-                                    continue
-
+                                    pass
                             court_count = len(sorted(set(courts))) if courts else 1
                             if court_count <= 0:
                                 court_count = 1
 
-                            def _team_list(x):
-                                """팀(선수) 이름을 리스트로 정규화"""
-                                if isinstance(x, (list, tuple)):
-                                    return [str(v).strip() for v in x if str(v).strip()]
-                                s = re.sub(r"<[^>]*>", "", str(x)).strip()
-                                s = re.sub(r"\s+", " ", s).strip()
-                                return [p.strip() for p in s.split(" ") if p.strip()]
-
-                            # ✅ 전체 참가자(대진표 전체에서 등장한 순서대로)
-                            all_names = []
-                            seen = set()
-                            for _, t1, t2, _ in schedule_list:
-                                for nm in _team_list(t1) + _team_list(t2):
-                                    if nm and nm not in seen:
-                                        seen.add(nm)
-                                        all_names.append(nm)
-
                             lines = []
-                            total_rounds = (len(schedule_list) + court_count - 1) // court_count
+                            prev_round = None
 
-                            for round_no in range(1, total_rounds + 1):
-                                start = (round_no - 1) * court_count
-                                end = min(round_no * court_count, len(schedule_list))
-                                chunk = schedule_list[start:end]
-                                if not chunk:
-                                    continue
+                            for i, (gtype, t1, t2, court) in enumerate(schedule_list):
+                                round_no = (i // court_count) + 1
 
-                                playing = set()
+                                try:
+                                    court_no = int(court)
+                                except Exception:
+                                    court_no = (i % court_count) + 1
 
-                                for i, (gtype, t1, t2, court) in enumerate(chunk):
-                                    try:
-                                        court_no = int(court)
-                                    except Exception:
-                                        court_no = i + 1
+                                if prev_round is not None and round_no != prev_round:
+                                    lines.append("")  # ✅ 게임 바뀌면 빈 줄 1개(=두줄 띄기 효과)
 
-                                    for nm in _team_list(t1) + _team_list(t2):
-                                        if nm:
-                                            playing.add(nm)
-
-                                    lines.append(
-                                        f"{round_no}게임{court_no}코트 {_team_join(t1)} vs {_team_join(t2)}"
-                                    )
-
-                                bench = [nm for nm in all_names if nm not in playing]
-                                lines.append("쉬는사람: " + (",".join(bench) if bench else "없음"))
-                                lines.append("")  # ✅ 한 칸 띄우고 다음 게임
+                                lines.append(f"{round_no}게임.{court_no}코트 {_team_join(t1)} vs {_team_join(t2)}")
+                                prev_round = round_no
 
                             return "\n".join(lines).strip()
 
