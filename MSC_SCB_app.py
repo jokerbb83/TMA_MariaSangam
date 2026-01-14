@@ -21,10 +21,7 @@ HERE = Path(__file__).resolve().parent
 
 # ✅ 연결 대상(관리자 앱) 후보들
 CANDIDATES = [
-    "MSC_app - 복사본 (12).py",        # ✅ 기준(관리자) 앱 파일
-    "MSC_app_admin_linked.py",         # 연동용 관리자 앱(있으면 사용)
-    "MSC_app.py",
-    "MSC_app - 복사본 (9).py",
+    "MSC_app.py",        # ✅ 기준(관리자) 앱 파일
 ]
 
 target = None
