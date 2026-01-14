@@ -26,7 +26,7 @@ def CLUB_NAME() -> str:
     return "마리아상암포바"
 
 def APP_PURPOSE_NAME() -> str:
-    return "테니스 노트"  # 예: "테니스노트 관리자용 (Beta)"
+    return "테니스 노트(Beta)"  # 예: "테니스노트 관리자용 (Beta)"
 
 DATA_FILE_PREFIX = "MSC"    # 예: "MSC" → MSC_players.json / MSC_sessions.json
 
