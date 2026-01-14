@@ -31,7 +31,7 @@ def CLUB_NAME() -> str:
 ADMIN_PURPOSE = "테니스 노트(Beta)"  # 예: "도우미 (Beta)"
 
 # ✅ 스코어보드(읽기전용) 앱 타이틀
-SCOREBOARD_PURPOSE = "스코어보드 (Beta)"
+SCOREBOARD_PURPOSE = "테니스 노트 스코어보드 (Beta)"
 
 # ✅ 데이터 파일 prefix (예: "MSC" → MSC_players.json / MSC_sessions.json)
 DATA_FILE_PREFIX = "MSC"
@@ -759,7 +759,11 @@ def load_json(path, default):
     ✅ admin 모드: 로컬 우선 → (없으면) GitHub fallback
     ✅ observer 모드: GitHub 우선 → (실패시) 로컬 fallback
     """
-    prefer_github = bool(IS_OBSERVER)
+    # ✅ 데이터 로드 우선순위
+    # - admin     : 로컬 우선 → (없으면) GitHub fallback
+    # - observer  : GitHub 우선 → (실패시) 로컬 fallback
+    # - scoreboard: 로컬 우선 → (없으면) GitHub fallback (관리자 앱과 동일 데이터 보장)
+    prefer_github = (APP_MODE == "observer")
 
     repo = st.secrets.get("GITHUB_REPO", "")
     branch = st.secrets.get("GITHUB_BRANCH", "main")
