@@ -2885,7 +2885,6 @@ else:
 
 
 def render_tab_player_manage(tab):
-    global roster
     with tab:
         st.header("🧾 선수 정보 관리")
 
@@ -3296,7 +3295,7 @@ def render_tab_player_manage(tab):
                         st.markdown('<div class="main-danger-btn">', unsafe_allow_html=True)
                         if st.button("🗑 네, 삭제합니다", use_container_width=True, key="confirm_delete"):
                             target = st.session_state.pending_delete
-                            roster[:] = [p for p in roster if p.get("name") != target]
+                            roster = [p for p in roster if p.get("name") != target]
 
                             st.session_state.roster = roster
                             save_players(roster)
@@ -8099,5 +8098,3 @@ with tab5:
                     """,
                     unsafe_allow_html=True,
                 )
-
-
