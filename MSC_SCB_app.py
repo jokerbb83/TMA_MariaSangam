@@ -22,7 +22,9 @@ HERE = Path(__file__).resolve().parent
 # ✅ 연결 대상(관리자 앱) 후보들
 CANDIDATES = [
     "MSC_app_fixed.py",  # ✅ (patched) 관리자 앱 파일
-    "MSC_app.py",        # ✅ 기준(관리자) 앱 파일
+    "MSC_app_fixed_capture.py",  # ✅ 캡처/요약표 개선 버전
+    "MSC_app_fixed.py",          # ✅ 이전 fixed 버전
+    "MSC_app.py",                # ✅ 원본(관리자) 앱 파일
 ]
 
 target = None
