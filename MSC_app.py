@@ -199,76 +199,8 @@ div[data-testid="stDecoration"] {visibility: hidden !important;}
 div[data-testid="stStatusWidget"] {visibility: hidden !important;}
 .stDeployButton {display: none !important;}
 
-/* ✅ 라이트 모드 강제 */
-:root { color-scheme: light !important; }
-html, body, [data-testid="stAppViewContainer"] {
-  background: #ffffff !important;
-  color: #111827 !important;
-}
-
-/* 입력 UI 흰색 고정 */
-input, textarea, select {
-  background-color: #ffffff !important;
-  color: #111827 !important;
-}
-[data-testid="stSelectbox"] > div > div,
-[data-testid="stMultiSelect"] > div > div,
-[data-testid="stNumberInput"] > div > div:first-child,
-[data-testid="stTextInput"] > div > div,
-div[role="combobox"],
-div[role="spinbutton"],
-[data-baseweb="select"],
-[data-baseweb="input"] {
-  background-color: #ffffff !important;
-  color: #111827 !important;
-  border: 1px solid #e5e7eb !important;
-}
-
-/* 드롭다운/달력/팝오버(카톡 인앱에서 까매지는 부분) */
-div[data-baseweb="popover"],
-div[data-baseweb="menu"],
-ul[role="listbox"], div[role="listbox"]{
-  background: #ffffff !important;
-  color: #111827 !important;
-  border: 1px solid rgba(0,0,0,0.08) !important;
-}
-div[data-baseweb="popover"] *,
-div[data-baseweb="menu"] *,
-ul[role="listbox"] *,
-div[role="listbox"] * {
-  color: #111827 !important;
-}
-
-/* 선택/호버 */
-div[data-baseweb="menu"] div[role="option"][aria-selected="true"],
-ul[role="listbox"] li[aria-selected="true"]{
-  background: #f3f4f6 !important;
-}
-div[data-baseweb="menu"] div[role="option"]:hover,
-ul[role="listbox"] li:hover{
-  background: #e5e7eb !important;
-}
 </style>
 """, unsafe_allow_html=True)
-
-# ---------------------------------------------------------
-# ✅ 카톡 인앱브라우저 다크모드 “메타”까지 라이트로 고정 (보조)
-# ---------------------------------------------------------
-components.html("""
-<script>
-(function () {
-  const doc = window.parent?.document || document;
-
-  function upsertMeta(name, content){
-    let m = doc.querySelector(`meta[name="${name}"]`);
-    if(!m){ m = doc.createElement("meta"); m.setAttribute("name", name); doc.head.appendChild(m); }
-    m.setAttribute("content", content);
-  }
-  upsertMeta("color-scheme", "light");
-  upsertMeta("supported-color-schemes", "light");
-})();
-</script>
-""", height=0)
 
 
 st.markdown("""
@@ -294,13 +226,6 @@ st.markdown("""
   padding-bottom:2px;
 }
 .msa-game-line b{ white-space:nowrap; }
-
-/* ✅ 게임(라운드) 경계선 */
-.msa-game-sep{
-  border-top:1px solid rgba(0,0,0,0.12);
-  margin:8px 0 6px 0;
-}
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -5666,22 +5591,7 @@ with tab2:
                         unsafe_allow_html=True,
                     )
         else:
-            # ✅ 게임(라운드) 경계선: 같은 게임 안(코트1/2)에는 선을 안 긋고,
-            #    다음 게임이 시작되기 전에만 얇은 선을 추가
-            courts = []
-            for item in schedule:
-                try:
-                    courts.append(int(item[3]))
-                except Exception:
-                    pass
-            court_count = len(sorted(set(courts))) if courts else 1
-            if court_count <= 0:
-                court_count = 1
-
             for i, (gt, t1, t2, court) in enumerate(schedule, start=1):
-                if i > 1 and ((i - 1) % court_count) == 0:
-                    st.markdown('<div class="msa-game-sep"></div>', unsafe_allow_html=True)
-
                 t1_badges = "".join(render_name_badge(n, roster_by_name) for n in t1)
                 t2_badges = "".join(render_name_badge(n, roster_by_name) for n in t2)
                 st.markdown(
@@ -6658,11 +6568,9 @@ with tab3:
                             출력 포맷:
                               1게임.1코트 A,B vs C,D
                               1게임.2코트 E,F vs G,H
-                              쉬는사람: X,Y
 
                               2게임.1코트 ...
                               2게임.2코트 ...
-                              쉬는사람: ...
                             """
                             if not schedule_list:
                                 return ""
@@ -6678,66 +6586,24 @@ with tab3:
                             if court_count <= 0:
                                 court_count = 1
 
-                            # ✅ 전체 인원(스케줄에 등장하는 이름 기준)
-                            all_set = set()
-                            for (_gt, _t1, _t2, _court) in schedule_list:
-                                for side in (_t1, _t2):
-                                    if isinstance(side, (list, tuple)):
-                                        for v in side:
-                                            v = str(v).strip()
-                                            if v:
-                                                all_set.add(v)
-                                    else:
-                                        v = str(side).strip()
-                                        if v:
-                                            all_set.add(v)
-
-                            def _add_used(used_set, side):
-                                if isinstance(side, (list, tuple)):
-                                    for v in side:
-                                        v = str(v).strip()
-                                        if v:
-                                            used_set.add(v)
-                                else:
-                                    v = str(side).strip()
-                                    if v:
-                                        used_set.add(v)
-
-                            def _append_rest_line(lines, used_set):
-                                rest = sorted([p for p in all_set if p and p not in used_set])
-                                if rest:
-                                    lines.append("쉬는사람: " + ", ".join(rest))
-                                else:
-                                    lines.append("쉬는사람: 없음")
-
                             lines = []
-                            used_round = set()
-                            prev_round = 1
+                            prev_round = None
 
                             for i, (gtype, t1, t2, court) in enumerate(schedule_list):
                                 round_no = (i // court_count) + 1
-
-                                # ✅ 게임(라운드) 바뀌기 직전에 쉬는사람 라인 + 빈 줄
-                                if i > 0 and round_no != prev_round:
-                                    _append_rest_line(lines, used_round)
-                                    lines.append("")
-                                    used_round = set()
 
                                 try:
                                     court_no = int(court)
                                 except Exception:
                                     court_no = (i % court_count) + 1
 
+                                if prev_round is not None and round_no != prev_round:
+                                    lines.append("")  # ✅ 게임 바뀌면 빈 줄 1개(=두줄 띄기 효과)
+
                                 lines.append(f"{round_no}게임.{court_no}코트 {_team_join(t1)} vs {_team_join(t2)}")
-                                _add_used(used_round, t1)
-                                _add_used(used_round, t2)
                                 prev_round = round_no
 
-                            # 마지막 라운드 쉬는사람
-                            _append_rest_line(lines, used_round)
-
                             return "\n".join(lines).strip()
-
 
                         fixture_text = build_fixture_text_by_round(schedule)
 
@@ -6860,37 +6726,40 @@ with tab3:
                                       return;
                                     }}
 
-                                    // ✅ 캔버스 기반(DataFrame)도 제대로 캡처되도록 "복사(clone)" 대신
-//    실제 DOM을 대상으로 범위(y/height)만 잘라서 캡처한다.
-const commonRect = common.getBoundingClientRect();
-const startRect = start.getBoundingClientRect();
-const endRect   = end.getBoundingClientRect();
+                                    const kids = Array.from(common.children);
+                                    const si = kids.indexOf(startTop);
+                                    const ei = kids.indexOf(endTop);
 
-const y0 = startRect.top - commonRect.top;
-const y1 = endRect.top   - commonRect.top;
+                                    if (si < 0 || ei < 0 || ei <= si) {{
+                                      setMsg("캡처 범위 인덱스 오류");
+                                      return;
+                                    }}
 
-const w = Math.ceil(commonRect.width || (common.clientWidth || 1200));
-const h = Math.ceil(y1 - y0);
+                                    const wrapper = pdoc.createElement("div");
+                                    wrapper.style.position = "fixed";
+                                    wrapper.style.left = "-100000px";
+                                    wrapper.style.top = "0";
+                                    wrapper.style.background = "#ffffff";
+                                    wrapper.style.width = (common.clientWidth || 1200) + "px";
+                                    wrapper.style.padding = "0";
+                                    wrapper.style.margin = "0";
 
-if (!(h > 0)) {{
-  setMsg("캡처 범위 계산 오류");
-  return;
-}}
+                                    for (let i = si + 1; i < ei; i++) {{
+                                      wrapper.appendChild(kids[i].cloneNode(true));
+                                    }}
 
-const h2c = await ensureHtml2Canvas();
-const canvas = await h2c(common, {{
-  backgroundColor: "#ffffff",
-  scale: 2,
-  useCORS: true,
-  x: 0,
-  y: y0,
-  width: w,
-  height: h,
-  scrollX: -(window.parent.pageXOffset || 0),
-  scrollY: -(window.parent.pageYOffset || 0),
-}});
+                                    pdoc.body.appendChild(wrapper);
 
-const url = canvas.toDataURL("image/jpeg", 0.95);
+                                    const h2c = await ensureHtml2Canvas();
+                                    const canvas = await h2c(wrapper, {{
+                                      backgroundColor: "#ffffff",
+                                      scale: 2,
+                                      useCORS: true
+                                    }});
+
+                                    wrapper.remove();
+
+                                    const url = canvas.toDataURL("image/jpeg", 0.95);
                                     const a = pdoc.createElement("a");
                                     a.href = url;
                                     a.download = fileName;
@@ -7110,37 +6979,40 @@ const url = canvas.toDataURL("image/jpeg", 0.95);
                                       return;
                                     }}
 
-                                    // ✅ 캔버스 기반(DataFrame)도 제대로 캡처되도록 "복사(clone)" 대신
-//    실제 DOM을 대상으로 범위(y/height)만 잘라서 캡처한다.
-const commonRect = common.getBoundingClientRect();
-const startRect = start.getBoundingClientRect();
-const endRect   = end.getBoundingClientRect();
+                                    const kids = Array.from(common.children);
+                                    const si = kids.indexOf(startTop);
+                                    const ei = kids.indexOf(endTop);
 
-const y0 = startRect.top - commonRect.top;
-const y1 = endRect.top   - commonRect.top;
+                                    if (si < 0 || ei < 0 || ei <= si) {{
+                                      setMsg("캡처 범위 인덱스 오류");
+                                      return;
+                                    }}
 
-const w = Math.ceil(commonRect.width || (common.clientWidth || 1200));
-const h = Math.ceil(y1 - y0);
+                                    const wrapper = pdoc.createElement("div");
+                                    wrapper.style.position = "fixed";
+                                    wrapper.style.left = "-100000px";
+                                    wrapper.style.top = "0";
+                                    wrapper.style.background = "#ffffff";
+                                    wrapper.style.width = (common.clientWidth || 1200) + "px";
+                                    wrapper.style.padding = "0";
+                                    wrapper.style.margin = "0";
 
-if (!(h > 0)) {{
-  setMsg("캡처 범위 계산 오류");
-  return;
-}}
+                                    for (let i = si + 1; i < ei; i++) {{
+                                      wrapper.appendChild(kids[i].cloneNode(true));
+                                    }}
 
-const h2c = await ensureHtml2Canvas();
-const canvas = await h2c(common, {{
-  backgroundColor: "#ffffff",
-  scale: 2,
-  useCORS: true,
-  x: 0,
-  y: y0,
-  width: w,
-  height: h,
-  scrollX: -(window.parent.pageXOffset || 0),
-  scrollY: -(window.parent.pageYOffset || 0),
-}});
+                                    pdoc.body.appendChild(wrapper);
 
-const url = canvas.toDataURL("image/jpeg", 0.95);
+                                    const h2c = await ensureHtml2Canvas();
+                                    const canvas = await h2c(wrapper, {{
+                                      backgroundColor: "#ffffff",
+                                      scale: 2,
+                                      useCORS: true
+                                    }});
+
+                                    wrapper.remove();
+
+                                    const url = canvas.toDataURL("image/jpeg", 0.95);
                                     const a = pdoc.createElement("a");
                                     a.href = url;
                                     a.download = fileName;
@@ -7767,14 +7639,7 @@ with tab5:
 
                 # ---------------------------------------------------------
                 # 1-3) 순위표 출력
-                # ✅ 순위표 JPG 저장: 캡처 범위 마커
-                safe_month_key = re.sub(r"[^0-9a-zA-Z_\-]+", "_", str(sel_month))
-                mode_key = "all" if rank_view_mode == "전체" else "ab"
-                rank_capture_id = f"month_rank_capture_{safe_month_key}_{mode_key}"
-                rank_file_name = f"월간순위표_{safe_month_key}_{mode_key}.jpg"
-                st.markdown(f'<div id="{rank_capture_id}__start"></div>', unsafe_allow_html=True)
-
-# ---------------------------------------------------------
+                # ---------------------------------------------------------
                 if rank_view_mode == "전체":
                     rank_df = build_rank_df(recs_all)
                     if rank_df is None:
@@ -7807,160 +7672,7 @@ with tab5:
                     if not has_any:
                         st.info("A조 / B조로 나눠서 표시할 데이터가 없습니다.")
 
-                                # ✅ 캡처용(전체 행 포함) 정적 HTML 테이블 렌더(화면 밖)
-                club_title_for_capture = "마리아상암포바 도우미 (Beta)"
-                month_title_for_capture = f"{sel_month} 월간 순위표"
-                rank_capture_inner = ""
-                if rank_view_mode == "전체":
-                    if "sty_rank" in locals() and sty_rank is not None:
-                        try:
-                            rank_capture_inner = sty_rank.to_html()
-                        except Exception:
-                            rank_capture_inner = ""
-                else:
-                    parts = []
-                    if "sty_A" in locals() and sty_A is not None:
-                        try:
-                            parts.append("<h3 style='margin:18px 0 8px 0; font-size:22px; font-weight:900;'>🟥 A조 월간 선수 순위표</h3>" + sty_A.to_html())
-                        except Exception:
-                            pass
-                    if "sty_B" in locals() and sty_B is not None:
-                        try:
-                            parts.append("<h3 style='margin:24px 0 8px 0; font-size:22px; font-weight:900;'>🟦 B조 월간 선수 순위표</h3>" + sty_B.to_html())
-                        except Exception:
-                            pass
-                    rank_capture_inner = "".join(parts)
-
-                render_html = f"""
-                <div id=\"{rank_capture_id}__render\" class=\"rank-capture-wrap\" style=\"
-                    position: fixed; left: -10000px; top: 0;
-                    background: #ffffff; color: #111827;
-                    padding: 24px 28px;
-                    width: 1200px;
-                    box-sizing: border-box;
-                \">
-                  <div style=\"font-size:30px; font-weight:900; margin:0 0 6px 0;\">{club_title_for_capture}</div>
-                  <div style=\"font-size:20px; font-weight:800; margin:0 0 18px 0;\">{month_title_for_capture}</div>
-
-                  <style>
-                    .rank-capture-wrap table {
-                      width: 100% !important;
-                      border-collapse: collapse !important;
-                    }
-                    .rank-capture-wrap th, .rank-capture-wrap td {
-                      border: 1px solid #e5e7eb !important;
-                      padding: 8px 10px !important;
-                      font-size: 14px !important;
-                    }
-                    .rank-capture-wrap th {
-                      background: #f9fafb !important;
-                      font-weight: 800 !important;
-                    }
-                  </style>
-
-                  {rank_capture_inner if rank_capture_inner else "<div style='padding:18px; color:#6b7280;'>표시할 데이터가 없습니다.</div>"}
-                </div>
-                """
-                st.markdown(render_html, unsafe_allow_html=True)
-
-                st.markdown(f'<div id="{rank_capture_id}__end"></div>', unsafe_allow_html=True)
-
-                components.html(
-                    f"""                    <div style="display:flex; gap:12px; margin-top:12px; align-items:center;">
-                      <button id="{rank_capture_id}__save"
-                        style="padding:10px 14px; border-radius:12px;
-                               border:1px solid #10b981; background:#10b981; color:white;
-                               cursor:pointer; font-weight:800;">
-                        순위표 JPG 저장
-                      </button>
-                      <span id="{rank_capture_id}__msg" style="font-size:12px; opacity:0.7;"></span>
-                    </div>
-
-                    <script>
-                    (function () {{
-                      const capId = {json.dumps(rank_capture_id)};
-                      const fileName = {json.dumps(rank_file_name)};
-                      const msgEl  = document.getElementById(capId + "__msg");
-                      const btnSave = document.getElementById(capId + "__save");
-
-                      function setMsg(t) {{ if (msgEl) msgEl.textContent = t; }}
-
-                      async function ensureHtml2Canvas() {{
-                        const p = window.parent;
-                        if (p && p.html2canvas) return p.html2canvas;
-                        return await new Promise((resolve, reject) => {{
-                          try {{
-                            const ps = p.document.createElement("script");
-                            ps.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
-                            ps.onload = () => resolve(p.html2canvas);
-                            ps.onerror = reject;
-                            p.document.head.appendChild(ps);
-                          }} catch(e) {{
-                            reject(e);
-                          }}
-                        }});
-                      }}
-
-                      if (btnSave) {{
-                        btnSave.onclick = async function() {{
-                          try {{
-                            setMsg("이미지 생성중…");
-                            const pdoc = window.parent.document;
-
-                            const render = pdoc.getElementById(capId + "__render");
-                            if (!render) {{
-                              setMsg("캡처 영역을 찾지 못했어.");
-                              return;
-                            }}
-
-                            // 렌더 안정화
-                            await new Promise(r => setTimeout(r, 60));
-
-                            const rect = render.getBoundingClientRect();
-                            const w = Math.ceil(render.scrollWidth  || rect.width  || 1200);
-                            const h = Math.ceil(render.scrollHeight || rect.height || 800);
-
-                            if (!(w > 0 && h > 0)) {{
-                              setMsg("캡처 크기 계산 오류");
-                              return;
-                            }}
-
-                            const h2c = await ensureHtml2Canvas();
-                            const canvas = await h2c(render, {{
-                              backgroundColor: "#ffffff",
-                              scale: 2,
-                              useCORS: true,
-                              width: w,
-                              height: h,
-                              windowWidth: w,
-                              windowHeight: h,
-                              scrollX: 0,
-                              scrollY: 0,
-                            }});
-
-                            const url = canvas.toDataURL("image/jpeg", 0.95);
-
-                            const a = pdoc.createElement("a");
-                            a.href = url;
-                            a.download = fileName;
-                            pdoc.body.appendChild(a);
-                            a.click();
-                            a.remove();
-
-                            setMsg("JPEG 저장 완료!");
-                          }} catch (e) {{
-                            console.log(e);
-                            setMsg("저장 실패(콘솔 확인)");
-                          }}
-                        }};
-                      }}
-                    }})();
-                    </script>
-                    """,
-                    height=100,
-                )
-
-# =========================================================
+                # =========================================================
                 # 2. 월 전체 경기 요약 (일별)
                 # =========================================================
                 st.subheader("2. 월 전체 경기 요약 (일별)")
