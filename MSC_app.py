@@ -62,7 +62,7 @@ def render_footer():
     if IS_SCOREBOARD:
         st.markdown(
             '<div style="margin: 22px 0 10px; text-align:center; color:#9ca3af; font-size:0.82rem;">'
-            f'📣 <b>{CLUB_NAME()} 테니스 노트</b> · <span style="color:#6b7280;">읽기 전용</span><br/>'
+            f'📣 <b>{CLUB_NAME()} 스코어보드</b> · <span style="color:#6b7280;">읽기 전용</span><br/>'
             'Copyright ⓒ 2026. Studioroom. All rights reserved.'
             "</div>",
             unsafe_allow_html=True,
@@ -756,14 +756,13 @@ def _github_read_json(repo: str, branch: str, file_path: str, token: str | None)
 
 def load_json(path, default):
     """
-    ✅ admin 모드: 로컬 우선 → (없으면) GitHub fallback
-    ✅ observer 모드: GitHub 우선 → (실패시) 로컬 fallback
+    ✅ admin/scoreboard: 로컬 → GitHub 보조(merge)
+    ✅ observer: GitHub → 로컬 보조(merge)
+
+    - 특히 sessions.json은 "날짜는 있는데 schedule만 비어있는" 경우가 생기면
+      다른 소스의 schedule을 보강해서 스코어보드 표가 안 사라지게 합니다.
     """
-    # ✅ 데이터 로드 우선순위
-    # - admin     : 로컬 우선 → (없으면) GitHub fallback
-    # - observer  : GitHub 우선 → (실패시) 로컬 fallback
-    # - scoreboard: 로컬 우선 → (없으면) GitHub fallback (관리자 앱과 동일 데이터 보장)
-    prefer_github = (APP_MODE == "observer")
+    prefer_github = bool(IS_OBSERVER)
 
     repo = st.secrets.get("GITHUB_REPO", "")
     branch = st.secrets.get("GITHUB_BRANCH", "main")
@@ -778,29 +777,80 @@ def load_json(path, default):
     else:
         gh_path = path
 
-    # 1) GitHub 우선(옵저버)
-    if prefer_github:
-        ok, data = _github_read_json(repo, branch, gh_path, token)
-        if ok and data is not None:
-            return data
-
-    # 2) 로컬 로드
-    if os.path.exists(path):
+    def _read_local():
+        if not os.path.exists(path):
+            return None
         try:
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
-            pass
+            return None
 
-    # 3) GitHub fallback(관리자/로컬이 없을 때)
-    if not prefer_github:
+    local_data = None
+    github_data = None
+
+    # 1) 우선순위 소스 먼저 시도
+    if prefer_github:
         ok, data = _github_read_json(repo, branch, gh_path, token)
         if ok and data is not None:
-            return data
+            github_data = data
+        local_data = _read_local()
+    else:
+        local_data = _read_local()
+        ok, data = _github_read_json(repo, branch, gh_path, token)
+        if ok and data is not None:
+            github_data = data
+
+    # 2) sessions는 두 소스를 "병합" (표가 안 없어지게)
+    if path == SESSIONS_FILE and isinstance(local_data, dict) and isinstance(github_data, dict):
+        base = github_data if prefer_github else local_data
+        other = local_data if prefer_github else github_data
+
+        merged = dict(base)
+
+        def _is_empty(v):
+            return v is None or v == "" or v == [] or v == {}
+
+        for d, od in other.items():
+            if d not in merged or not isinstance(merged.get(d), dict) or not isinstance(od, dict):
+                merged[d] = od
+                continue
+
+            bd = merged[d]
+
+            # ✅ schedule 보강
+            if _is_empty(bd.get("schedule")) and (not _is_empty(od.get("schedule"))):
+                bd["schedule"] = od.get("schedule")
+                for k in ("court_type", "special_match", "groups_snapshot"):
+                    if k in od and _is_empty(bd.get(k)):
+                        bd[k] = od.get(k)
+
+            # ✅ results(점수) 보강
+            if _is_empty(bd.get("results")) and (not _is_empty(od.get("results"))):
+                bd["results"] = od.get("results")
+
+            # ✅ 잠금/표시 옵션 등 일반 키 보강(빈값만)
+            for k, v in od.items():
+                if k not in bd or _is_empty(bd.get(k)):
+                    bd[k] = v
+
+            merged[d] = bd
+
+        return merged
+
+    # 3) 그 외 파일은 우선순위대로 반환
+    if prefer_github:
+        if github_data is not None:
+            return github_data
+        if local_data is not None:
+            return local_data
+    else:
+        if local_data is not None:
+            return local_data
+        if github_data is not None:
+            return github_data
 
     return default
-
-
 def save_json(path, data):
     # ✅ 스코어보드/옵저버(읽기전용)에서는 어떤 경우에도 파일 쓰기 금지
     if READ_ONLY:
@@ -5848,6 +5898,26 @@ def render_tab_today_session(tab):
                 sessions[save_date_str] = day_data
                 save_sessions(sessions)
                 st.session_state.sessions = sessions
+
+                # ✅ (자동) GitHub에도 sessions 저장: 스코어보드가 최신 대진을 바로 보게
+                #    - 토큰/리포지토리 설정이 없으면 조용히 패스
+                try:
+                    if not READ_ONLY:
+                        repo = st.secrets.get("GITHUB_REPO", "")
+                        branch = st.secrets.get("GITHUB_BRANCH", "main")
+                        token = st.secrets.get("GITHUB_TOKEN", "")
+                        if repo and token:
+                            file_path = st.secrets.get("GITHUB_FILE_PATH", SESSIONS_FILE)
+                            github_upsert_json_file(
+                                file_path=file_path,
+                                new_data=sessions,
+                                commit_message="Auto-save schedule (sessions)",
+                                repo=repo,
+                                branch=branch,
+                                token=token,
+                            )
+                except Exception:
+                    pass
                 st.success(f"{save_date_str} 대진이 저장됐어! (스페셜 매치: {'ON' if day_data['special_match'] else 'OFF'})")
     # =========================================================
     # 3) 경기 기록 / 통계 (날짜별)
