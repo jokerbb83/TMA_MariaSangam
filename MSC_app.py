@@ -26,61 +26,25 @@ def CLUB_NAME() -> str:
     return "마리아상암포바"
 
 def APP_PURPOSE_NAME() -> str:
-    return "도우미 (Beta)"  # 예: "테니스노트 관리자용 (Beta)"
+    return "테니스 노트(Beta)"  # 예: "테니스노트 관리자용 (Beta)"
 
 DATA_FILE_PREFIX = "MSC"    # 예: "MSC" → MSC_players.json / MSC_sessions.json
 
-BASE_APP_TITLE = f"{CLUB_NAME()} {APP_PURPOSE_NAME()}"
+APP_TITLE = f"{CLUB_NAME()} {APP_PURPOSE_NAME()}"
 PLAYERS_FILE = f"{DATA_FILE_PREFIX}_players.json"
 SESSIONS_FILE = f"{DATA_FILE_PREFIX}_sessions.json"
 
-# ✅ 앱 모드: "admin"(기본) / "observer"(옵저버: 3탭만) / "scoreboard"(스코어보드)
+# ✅ 앱 모드: "admin"(기본) / "observer"(옵저버: 3탭만)
 APP_MODE = os.getenv("MSC_APP_MODE", "admin").strip().lower()
 IS_OBSERVER = APP_MODE in ("observer", "scb", "scoreboard")
 
-# ✅ 스코어보드: 세션 파일은 완전 읽기 전용(어떤 경우에도 쓰기 금지)
-SESSIONS_READONLY = (
-    os.getenv("MSC_SESSIONS_READONLY", "0").strip().lower() in ("1", "true", "yes", "y")
-    or IS_OBSERVER
-)
-
-# ✅ 타이틀/컬러/푸터: 모드별 오버라이드 지원 (SCB 앱에서 env로 넘길 수 있음)
-_ADMIN_TITLE = (os.getenv("MSC_ADMIN_TITLE", "").strip() or BASE_APP_TITLE)
-_SCB_TITLE = os.getenv("MSC_SCB_TITLE", "").strip() or f"{CLUB_NAME()} 스코어보드"
-APP_TITLE = _SCB_TITLE if IS_OBSERVER else _ADMIN_TITLE
-
-# 브랜드 컬러(기본: 관리자=민트, 스코어보드=블루)
-ADMIN_BRAND_COLOR = os.getenv("MSC_ADMIN_BRAND_COLOR", "#5fcdb2").strip()
-SCB_BRAND_COLOR = os.getenv("MSC_SCB_BRAND_COLOR", "#3b82f6").strip()
-SCB_BRAND_COLOR_HOVER = os.getenv("MSC_SCB_BRAND_COLOR_HOVER", "#2563eb").strip()
-BRAND_COLOR = SCB_BRAND_COLOR if IS_OBSERVER else ADMIN_BRAND_COLOR
-
-# 섹션 카드 그라데이션 끝 색상
-SECTION_GRAD_END = os.getenv(
-    "MSC_SCB_SECTION_GRAD_END" if IS_OBSERVER else "MSC_ADMIN_SECTION_GRAD_END",
-    "#eff6ff" if IS_OBSERVER else "#eef2ff",
-).strip()
-
-# 푸터 HTML
-_ADMIN_FOOTER_HTML = os.getenv(
-    "MSC_ADMIN_FOOTER_HTML",
-    '<div style="margin: 26px 0 10px; text-align:center; color:#9ca3af; font-size:0.82rem;">'
-    "Copyright ⓒ 2026. Studioroom. All rights reserved."
-    "</div>",
-).strip()
-
-_SCB_FOOTER_HTML = os.getenv(
-    "MSC_SCB_FOOTER_HTML",
-    '<div style="margin: 26px 0 10px; text-align:center; color:#9ca3af; font-size:0.82rem;">'
-    "Scoreboard (Read-only) · Copyright ⓒ 2026. Studioroom. All rights reserved."
-    "</div>",
-).strip()
-
-FOOTER_HTML = _SCB_FOOTER_HTML if IS_OBSERVER else _ADMIN_FOOTER_HTML
-
-
 def render_footer():
-    st.markdown(FOOTER_HTML, unsafe_allow_html=True)
+    st.markdown(
+        '<div style="margin: 26px 0 10px; text-align:center; color:#9ca3af; font-size:0.82rem;">'
+        'Copyright ⓒ 2026. Studioroom. All rights reserved.'
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
 
 
@@ -801,14 +765,6 @@ def load_json(path, default):
 
 
 def save_json(path, data):
-    # ✅ 스코어보드/옵저버 모드: sessions.json 은 어떤 경우에도 '쓰기' 금지
-    if SESSIONS_READONLY and path == SESSIONS_FILE:
-        # (조용히 무시: 읽기전용 앱에서 실수로 저장 호출돼도 앱이 죽지 않게)
-        if "_sessions_readonly_warned" not in st.session_state:
-            st.session_state["_sessions_readonly_warned"] = True
-            st.info("📌 스코어보드 모드: 세션 데이터는 읽기 전용이라 저장되지 않아.", icon="🔒")
-        return
-
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
@@ -2300,7 +2256,7 @@ def section_card(title: str, emoji: str = "📌"):
             margin-bottom: 0.4rem;
             padding: 0.55rem 0.9rem;
             border-radius: 0.75rem;
-            background: linear-gradient(135deg, #ffffff 0%, #f9fafb 60%, var(--section-grad-end) 100%);
+            background: linear-gradient(135deg, #ffffff 0%, #f9fafb 60%, #eef2ff 100%);
             display: flex;
             align-items: center;
             gap: 0.4rem;
@@ -2566,37 +2522,6 @@ div.element-container:has(.main-warning-btn) + div.element-container div[data-te
 """
 
 st.markdown(BUTTON_CSS, unsafe_allow_html=True)
-
-# ✅ 모드별 테마(타이틀 컬러/버튼 민트색 오버라이드/섹션 카드 그라데이션)
-BASE_THEME_CSS = f'''
-<style>
-:root {{
-  --section-grad-end: {SECTION_GRAD_END};
-}}
-</style>
-'''
-st.markdown(BASE_THEME_CSS, unsafe_allow_html=True)
-
-if IS_OBSERVER:
-    SCB_THEME_CSS = f'''
-<style>
-/* 스코어보드: 기본 민트(Primary)를 브랜드 컬러로 덮어쓰기 */
-:root {{
-  --btn-mint: {SCB_BRAND_COLOR};
-  --btn-mint-hover: {SCB_BRAND_COLOR_HOVER};
-  --section-grad-end: {SECTION_GRAD_END};
-}}
-/* 상단 타이틀 컬러 */
-h1 {{
-  color: {SCB_BRAND_COLOR} !important;
-}}
-/* 탭 활성 색상(가능한 범위에서) */
-div[data-baseweb="tab"][aria-selected="true"] {{
-  color: {SCB_BRAND_COLOR} !important;
-}}
-</style>
-'''
-    st.markdown(SCB_THEME_CSS, unsafe_allow_html=True)
 
 
 # 🔽 모바일 폰에서 여백/폰트/탭 간격 줄이는 CSS + 이름 뱃지 색상 고정
@@ -2911,7 +2836,7 @@ roster = st.session_state.roster
 sessions = st.session_state.sessions
 roster_by_name = {p["name"]: p for p in roster}
 
-st.title(f"{'📊' if IS_OBSERVER else '🎾'} {APP_TITLE}")
+st.title(f"🎾 {APP_TITLE}")
 
 # 📱 폰에서 볼 때 ON 해두면 A/B조 나란히 레이아웃을 세로로 바꿔줌
 mobile_mode = st.checkbox(
@@ -6787,12 +6712,14 @@ with tab3:
                         def build_fixture_text_by_round(schedule_list):
                             """
                             schedule: [(gtype, t1, t2, court), ...]
-                            출력 포맷:
-                              1게임.1코트 A,B vs C,D
-                              1게임.2코트 E,F vs G,H
+                            출력 포맷(예):
+                              1게임1코트 A,B vs C,D
+                              1게임2코트 E,F vs G,H
+                              쉬는사람: I,J
 
-                              2게임.1코트 ...
-                              2게임.2코트 ...
+                              2게임1코트 ...
+                              2게임2코트 ...
+                              쉬는사람: ...
                             """
                             if not schedule_list:
                                 return ""
@@ -6801,29 +6728,61 @@ with tab3:
                             courts = []
                             for item in schedule_list:
                                 try:
-                                    courts.append(int(item[3]))
+                                    c = item[3]
+                                    courts.append(int(c))
                                 except Exception:
-                                    pass
+                                    continue
+
                             court_count = len(sorted(set(courts))) if courts else 1
                             if court_count <= 0:
                                 court_count = 1
 
+                            def _team_list(x):
+                                """팀(선수) 이름을 리스트로 정규화"""
+                                if isinstance(x, (list, tuple)):
+                                    return [str(v).strip() for v in x if str(v).strip()]
+                                s = re.sub(r"<[^>]*>", "", str(x)).strip()
+                                s = re.sub(r"\s+", " ", s).strip()
+                                return [p.strip() for p in s.split(" ") if p.strip()]
+
+                            # ✅ 전체 참가자(대진표 전체에서 등장한 순서대로)
+                            all_names = []
+                            seen = set()
+                            for _, t1, t2, _ in schedule_list:
+                                for nm in _team_list(t1) + _team_list(t2):
+                                    if nm and nm not in seen:
+                                        seen.add(nm)
+                                        all_names.append(nm)
+
                             lines = []
-                            prev_round = None
+                            total_rounds = (len(schedule_list) + court_count - 1) // court_count
 
-                            for i, (gtype, t1, t2, court) in enumerate(schedule_list):
-                                round_no = (i // court_count) + 1
+                            for round_no in range(1, total_rounds + 1):
+                                start = (round_no - 1) * court_count
+                                end = min(round_no * court_count, len(schedule_list))
+                                chunk = schedule_list[start:end]
+                                if not chunk:
+                                    continue
 
-                                try:
-                                    court_no = int(court)
-                                except Exception:
-                                    court_no = (i % court_count) + 1
+                                playing = set()
 
-                                if prev_round is not None and round_no != prev_round:
-                                    lines.append("")  # ✅ 게임 바뀌면 빈 줄 1개(=두줄 띄기 효과)
+                                for i, (gtype, t1, t2, court) in enumerate(chunk):
+                                    try:
+                                        court_no = int(court)
+                                    except Exception:
+                                        court_no = i + 1
 
-                                lines.append(f"{round_no}게임.{court_no}코트 {_team_join(t1)} vs {_team_join(t2)}")
-                                prev_round = round_no
+                                    for nm in _team_list(t1) + _team_list(t2):
+                                        if nm:
+                                            playing.add(nm)
+
+                                    lines.append(
+                                        f"{round_no}게임{court_no}코트 {_team_join(t1)} vs {_team_join(t2)}"
+                                    )
+
+                                bench = [nm for nm in all_names if nm not in playing]
+                                lines.append("쉬는사람: " + (",".join(bench) if bench else "없음"))
+                                lines.append("")  # ✅ 한 칸 띄우고 다음 게임
 
                             return "\n".join(lines).strip()
 
