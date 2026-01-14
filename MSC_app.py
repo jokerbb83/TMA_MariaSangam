@@ -20,37 +20,66 @@ import streamlit.components.v1 as components
 
 
 # =========================================================
-# ✅ 멀티 동호회용 설정 (여기 3개만 바꾸면 전체가 같이 바뀜)
+# ✅ 멀티 동호회용 설정
+#   - 아래 3개(동호회명/관리자 타이틀/파일prefix)만 바꾸면 전체가 같이 바뀜
+#   - 스코어보드(읽기전용) 타이틀/색/푸터는 APP_MODE로 자동 분기
 # =========================================================
 def CLUB_NAME() -> str:
     return "마리아상암포바"
 
-def APP_PURPOSE_NAME() -> str:
-    return "테니스 노트(Beta)"  # 예: "테니스노트 관리자용 (Beta)"
+# ✅ 관리자(메인) 앱 타이틀
+ADMIN_PURPOSE = "테니스 노트(Beta)"  # 예: "도우미 (Beta)"
 
-DATA_FILE_PREFIX = "MSC"    # 예: "MSC" → MSC_players.json / MSC_sessions.json
+# ✅ 스코어보드(읽기전용) 앱 타이틀
+SCOREBOARD_PURPOSE = "스코어보드 (Beta)"
+
+# ✅ 데이터 파일 prefix (예: "MSC" → MSC_players.json / MSC_sessions.json)
+DATA_FILE_PREFIX = "MSC"
+
+# ✅ 앱 모드: "admin"(기본) / "observer"(옵저버) / "scoreboard"(스코어보드)
+APP_MODE = os.getenv("MSC_APP_MODE", "admin").strip().lower()
+
+# - 탭 제한(3탭만 보임): observer + scoreboard
+IS_OBSERVER = APP_MODE in ("observer", "scb", "scoreboard")
+
+# - 스코어보드 전용(브랜딩/완전 읽기전용)
+IS_SCOREBOARD = APP_MODE in ("scb", "scoreboard")
+
+# ✅ 완전 읽기 전용(어떤 경우에도 players/sessions 저장(쓰기) 금지)
+#   - 스코어보드에서는 기본 True
+#   - 필요하면 환경변수로 강제할 수 있음: MSC_READ_ONLY=1
+READ_ONLY = IS_SCOREBOARD or (os.getenv("MSC_READ_ONLY", "0").strip() == "1")
+
+def APP_PURPOSE_NAME() -> str:
+    return SCOREBOARD_PURPOSE if IS_SCOREBOARD else ADMIN_PURPOSE
 
 APP_TITLE = f"{CLUB_NAME()} {APP_PURPOSE_NAME()}"
 PLAYERS_FILE = f"{DATA_FILE_PREFIX}_players.json"
 SESSIONS_FILE = f"{DATA_FILE_PREFIX}_sessions.json"
 
-# ✅ 앱 모드: "admin"(기본) / "observer"(옵저버: 3탭만)
-APP_MODE = os.getenv("MSC_APP_MODE", "admin").strip().lower()
-IS_OBSERVER = APP_MODE in ("observer", "scb", "scoreboard")
 
 def render_footer():
-    st.markdown(
-        '<div style="margin: 26px 0 10px; text-align:center; color:#9ca3af; font-size:0.82rem;">'
-        'Copyright ⓒ 2026. Studioroom. All rights reserved.'
-        "</div>",
-        unsafe_allow_html=True,
-    )
+    if IS_SCOREBOARD:
+        st.markdown(
+            '<div style="margin: 22px 0 10px; text-align:center; color:#9ca3af; font-size:0.82rem;">'
+            f'📣 <b>{CLUB_NAME()} 스코어보드</b> · <span style="color:#6b7280;">읽기 전용</span><br/>'
+            'Copyright ⓒ 2026. Studioroom. All rights reserved.'
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            '<div style="margin: 26px 0 10px; text-align:center; color:#9ca3af; font-size:0.82rem;">'
+            'Copyright ⓒ 2026. Studioroom. All rights reserved.'
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
 
 
 
 # =========================================================
-# GitHub JSON 업서트 저장 유틸 (MSC_sessions.json)
+# GitHub JSON 업서트 저장 유틸 (MSC_sessions.json) (MSC_sessions.json)
 # - Streamlit Secrets에 아래가 있어야 함:
 #   GITHUB_TOKEN, GITHUB_REPO, GITHUB_BRANCH, GITHUB_FILE_PATH
 # =========================================================
@@ -68,6 +97,10 @@ def github_upsert_json_file(
     - file_path: SESSIONS_FILE
     - new_data: dict (예: sessions 전체)
     """
+    # ✅ 스코어보드/옵저버(읽기전용)에서는 GitHub 저장도 금지
+    if READ_ONLY:
+        raise RuntimeError("READ_ONLY: 이 모드에서는 sessions/players 저장(쓰기)을 할 수 없습니다.")
+
     token = token or st.secrets.get("GITHUB_TOKEN", "")
     repo = repo or st.secrets.get("GITHUB_REPO", "")
     branch = branch or st.secrets.get("GITHUB_BRANCH", "main")
@@ -765,8 +798,13 @@ def load_json(path, default):
 
 
 def save_json(path, data):
+    # ✅ 스코어보드/옵저버(읽기전용)에서는 어떤 경우에도 파일 쓰기 금지
+    if READ_ONLY:
+        return False
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    return True
+
 
 
 def load_players():
@@ -2521,7 +2559,33 @@ div.element-container:has(.main-warning-btn) + div.element-container div[data-te
 </style>
 """
 
+
+# ✅ 스코어보드 전용 테마 (버튼/포인트 컬러)
+if IS_SCOREBOARD:
+    BUTTON_CSS = (
+        BUTTON_CSS
+        .replace("--btn-mint:#5fcdb2;", "--btn-mint:#7c3aed;")
+        .replace("--btn-mint-hover:#55c4aa;", "--btn-mint-hover:#6d28d9;")
+    )
+
 st.markdown(BUTTON_CSS, unsafe_allow_html=True)
+
+# ✅ 스코어보드 전용 탭 포인트 컬러
+if IS_SCOREBOARD:
+    st.markdown(
+        """
+<style>
+/* 선택된 탭 텍스트/언더라인 색상 */
+.stTabs [role="tab"][aria-selected="true"]{
+  color:#6d28d9 !important;
+}
+.stTabs [data-baseweb="tab-highlight"]{
+  background-color:#6d28d9 !important;
+}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
 
 
 # 🔽 모바일 폰에서 여백/폰트/탭 간격 줄이는 CSS + 이름 뱃지 색상 고정
