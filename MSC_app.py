@@ -35,7 +35,7 @@ PLAYERS_FILE = f"{DATA_FILE_PREFIX}_players.json"
 SESSIONS_FILE = f"{DATA_FILE_PREFIX}_sessions.json"
 
 # ✅ 앱 모드: "admin"(기본) / "observer"(옵저버: 3탭만)
-APP_MODE = os.getenv("MSC_APP_MODE", "observer").strip().lower()
+APP_MODE = os.getenv("MSC_APP_MODE", "admin").strip().lower()
 IS_OBSERVER = APP_MODE in ("observer", "scb", "scoreboard")
 
 def render_footer():
@@ -8099,3 +8099,4 @@ with tab5:
                     """,
                     unsafe_allow_html=True,
                 )
+
