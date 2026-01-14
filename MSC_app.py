@@ -35,7 +35,7 @@ PLAYERS_FILE = f"{DATA_FILE_PREFIX}_players.json"
 SESSIONS_FILE = f"{DATA_FILE_PREFIX}_sessions.json"
 
 # ✅ 앱 모드: "admin"(기본) / "observer"(옵저버: 3탭만)
-APP_MODE = os.getenv("MSC_APP_MODE", "observer").strip().lower()
+APP_MODE = os.getenv("MSC_APP_MODE", "admin").strip().lower()
 IS_OBSERVER = APP_MODE in ("observer", "scb", "scoreboard")
 
 def render_footer():
@@ -214,7 +214,7 @@ components.html("""
 
 
 # ---------------------------------------------------------
-# ✅ Streamlit 상/하단 크레딧/툴바 숨김 + 라이트 고정 CSS (한 방)
+# ✅ Streamlit 상/하단 크레딧/툴바 숨김 CSS
 # ---------------------------------------------------------
 st.markdown("""
 <style>
@@ -228,77 +228,10 @@ div[data-testid="stToolbar"] {visibility: hidden !important; height: 0 !importan
 div[data-testid="stDecoration"] {visibility: hidden !important;}
 div[data-testid="stStatusWidget"] {visibility: hidden !important;}
 .stDeployButton {display: none !important;}
-
-/* ✅ 라이트 모드 강제 */
-:root { color-scheme: light !important; }
-html, body, [data-testid="stAppViewContainer"] {
-  background: #ffffff !important;
-  color: #111827 !important;
-}
-
-/* 입력 UI 흰색 고정 */
-input, textarea, select {
-  background-color: #ffffff !important;
-  color: #111827 !important;
-}
-[data-testid="stSelectbox"] > div > div,
-[data-testid="stMultiSelect"] > div > div,
-[data-testid="stNumberInput"] > div > div:first-child,
-[data-testid="stTextInput"] > div > div,
-div[role="combobox"],
-div[role="spinbutton"],
-[data-baseweb="select"],
-[data-baseweb="input"] {
-  background-color: #ffffff !important;
-  color: #111827 !important;
-  border: 1px solid #e5e7eb !important;
-}
-
-/* 드롭다운/달력/팝오버(카톡 인앱에서 까매지는 부분) */
-div[data-baseweb="popover"],
-div[data-baseweb="menu"],
-ul[role="listbox"], div[role="listbox"]{
-  background: #ffffff !important;
-  color: #111827 !important;
-  border: 1px solid rgba(0,0,0,0.08) !important;
-}
-div[data-baseweb="popover"] *,
-div[data-baseweb="menu"] *,
-ul[role="listbox"] *,
-div[role="listbox"] * {
-  color: #111827 !important;
-}
-
-/* 선택/호버 */
-div[data-baseweb="menu"] div[role="option"][aria-selected="true"],
-ul[role="listbox"] li[aria-selected="true"]{
-  background: #f3f4f6 !important;
-}
-div[data-baseweb="menu"] div[role="option"]:hover,
-ul[role="listbox"] li:hover{
-  background: #e5e7eb !important;
-}
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# ✅ 카톡 인앱브라우저 다크모드 “메타”까지 라이트로 고정 (보조)
-# ---------------------------------------------------------
-components.html("""
-<script>
-(function () {
-  const doc = window.parent?.document || document;
-
-  function upsertMeta(name, content){
-    let m = doc.querySelector(`meta[name="${name}"]`);
-    if(!m){ m = doc.createElement("meta"); m.setAttribute("name", name); doc.head.appendChild(m); }
-    m.setAttribute("content", content);
-  }
-  upsertMeta("color-scheme", "light");
-  upsertMeta("supported-color-schemes", "light");
-})();
-</script>
-""", height=0)
 
 
 st.markdown("""
@@ -6757,12 +6690,14 @@ with tab3:
                         def build_fixture_text_by_round(schedule_list):
                             """
                             schedule: [(gtype, t1, t2, court), ...]
-                            출력 포맷:
-                              1게임.1코트 A,B vs C,D
-                              1게임.2코트 E,F vs G,H
+                            출력 포맷(예):
+                              1게임1코트 A,B vs C,D
+                              1게임2코트 E,F vs G,H
+                              쉬는사람: I,J
 
-                              2게임.1코트 ...
-                              2게임.2코트 ...
+                              2게임1코트 ...
+                              2게임2코트 ...
+                              쉬는사람: ...
                             """
                             if not schedule_list:
                                 return ""
@@ -6771,29 +6706,61 @@ with tab3:
                             courts = []
                             for item in schedule_list:
                                 try:
-                                    courts.append(int(item[3]))
+                                    c = item[3]
+                                    courts.append(int(c))
                                 except Exception:
-                                    pass
+                                    continue
+
                             court_count = len(sorted(set(courts))) if courts else 1
                             if court_count <= 0:
                                 court_count = 1
 
+                            def _team_list(x):
+                                """팀(선수) 이름을 리스트로 정규화"""
+                                if isinstance(x, (list, tuple)):
+                                    return [str(v).strip() for v in x if str(v).strip()]
+                                s = re.sub(r"<[^>]*>", "", str(x)).strip()
+                                s = re.sub(r"\s+", " ", s).strip()
+                                return [p.strip() for p in s.split(" ") if p.strip()]
+
+                            # ✅ 전체 참가자(대진표 전체에서 등장한 순서대로)
+                            all_names = []
+                            seen = set()
+                            for _, t1, t2, _ in schedule_list:
+                                for nm in _team_list(t1) + _team_list(t2):
+                                    if nm and nm not in seen:
+                                        seen.add(nm)
+                                        all_names.append(nm)
+
                             lines = []
-                            prev_round = None
+                            total_rounds = (len(schedule_list) + court_count - 1) // court_count
 
-                            for i, (gtype, t1, t2, court) in enumerate(schedule_list):
-                                round_no = (i // court_count) + 1
+                            for round_no in range(1, total_rounds + 1):
+                                start = (round_no - 1) * court_count
+                                end = min(round_no * court_count, len(schedule_list))
+                                chunk = schedule_list[start:end]
+                                if not chunk:
+                                    continue
 
-                                try:
-                                    court_no = int(court)
-                                except Exception:
-                                    court_no = (i % court_count) + 1
+                                playing = set()
 
-                                if prev_round is not None and round_no != prev_round:
-                                    lines.append("")  # ✅ 게임 바뀌면 빈 줄 1개(=두줄 띄기 효과)
+                                for i, (gtype, t1, t2, court) in enumerate(chunk):
+                                    try:
+                                        court_no = int(court)
+                                    except Exception:
+                                        court_no = i + 1
 
-                                lines.append(f"{round_no}게임.{court_no}코트 {_team_join(t1)} vs {_team_join(t2)}")
-                                prev_round = round_no
+                                    for nm in _team_list(t1) + _team_list(t2):
+                                        if nm:
+                                            playing.add(nm)
+
+                                    lines.append(
+                                        f"{round_no}게임{court_no}코트 {_team_join(t1)} vs {_team_join(t2)}"
+                                    )
+
+                                bench = [nm for nm in all_names if nm not in playing]
+                                lines.append("쉬는사람: " + (",".join(bench) if bench else "없음"))
+                                lines.append("")  # ✅ 한 칸 띄우고 다음 게임
 
                             return "\n".join(lines).strip()
 
@@ -8180,4 +8147,3 @@ with tab5:
 # ✅ 모든 탭 공통 푸터
 # =========================================================
 render_footer()
-
