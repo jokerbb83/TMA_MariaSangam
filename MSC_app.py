@@ -28,10 +28,10 @@ def CLUB_NAME() -> str:
     return "마리아상암포바"
 
 # ✅ 관리자(메인) 앱 타이틀
-ADMIN_PURPOSE = "테니스 노트(Beta)"  # 예: "도우미 (Beta)"
+ADMIN_PURPOSE = "관리 도우미(Beta)"  # 예: "도우미 (Beta)"
 
 # ✅ 스코어보드(읽기전용) 앱 타이틀
-SCOREBOARD_PURPOSE = "테니스 노트 스코어보드 (Beta)"
+SCOREBOARD_PURPOSE = "스코어보드 (Beta)"
 
 # ✅ 데이터 파일 prefix (예: "MSC" → MSC_players.json / MSC_sessions.json)
 DATA_FILE_PREFIX = "MSC"
@@ -5945,6 +5945,132 @@ with tab3:
 
         # 나중에 다시 그리기 위한 요약 컨테이너
         summary_container = st.container()
+        
+        # =====================================================
+        # 1. 현재 스코어 요약 (표)
+        #   - 옵저버(읽기 전용)에서도 항상 표시
+        # =====================================================
+        with summary_container:
+            st.subheader("1. 현재 스코어 요약 (표)")
+        
+            if not schedule:
+                st.info("이 날짜에는 저장된 대진이 없습니다.")
+            else:
+                summary_view_mode = st.radio(
+                    "요약 보기 방식",
+                    ["대진별 보기", "개인별 보기"],
+                    horizontal=True,
+                    key=f"tab3_summary_view_mode_{sel_date}",
+                )
+        
+                # ✅ 게임별 rows 만들기
+                day_groups_snapshot = day_data.get("groups_snapshot")
+                rows_all, rows_A, rows_B, rows_other = [], [], [], []
+        
+                # 개인별 집계: {"name": [records...]}
+                per_player = defaultdict(list)
+        
+                def _player_group(name: str) -> str:
+                    if isinstance(day_groups_snapshot, dict) and name in day_groups_snapshot:
+                        return str(day_groups_snapshot.get(name) or "").replace(" ", "")
+                    return str(roster_by_name.get(name, {}).get("group", "") or "").replace(" ", "")
+        
+                for idx, (gtype, t1, t2, court) in enumerate(schedule, start=1):
+                    res = results.get(str(idx)) or results.get(idx) or {}
+                    s1, s2 = res.get("t1"), res.get("t2")
+        
+                    row = {
+                        "게임": idx,
+                        "코트": court,
+                        "타입": gtype,
+                        "t1": t1,
+                        "t2": t2,
+                        "t1_score": s1,
+                        "t2_score": s2,
+                    }
+                    rows_all.append(row)
+        
+                    # A/B조(가능하면) 분류
+                    all_players = t1 + t2
+                    grp_flag = classify_game_group(all_players, roster_by_name, day_groups_snapshot)
+                    if grp_flag == "A":
+                        rows_A.append(row)
+                    elif grp_flag == "B":
+                        rows_B.append(row)
+                    else:
+                        rows_other.append(row)
+        
+                    # 개인별 기록(팀 기준 점수) 누적
+                    if s1 is None or s2 is None:
+                        score_t1 = ""
+                        score_t2 = ""
+                    else:
+                        score_t1 = f"{s1}:{s2}"
+                        score_t2 = f"{s2}:{s1}"
+        
+                    for p in t1:
+                        per_player[p].append(f"{idx}G(코트{court}) {score_t1}")
+                    for p in t2:
+                        per_player[p].append(f"{idx}G(코트{court}) {score_t2}")
+        
+                # -----------------------------
+                # 출력
+                # -----------------------------
+                if summary_view_mode == "대진별 보기":
+                    has_AB = bool(rows_A or rows_B)
+                    if has_AB and (rows_A and rows_B):
+                        if rows_A:
+                            st.markdown("#### 🟥 A조 경기 요약")
+                            render_score_summary_table(rows_A, roster_by_name)
+                        if rows_B:
+                            st.markdown("#### 🟦 B조 경기 요약")
+                            render_score_summary_table(rows_B, roster_by_name)
+                        if rows_other:
+                            st.markdown("#### ⚪ 조가 섞인 경기 / 기타")
+                            render_score_summary_table(rows_other, roster_by_name)
+                    else:
+                        render_score_summary_table(rows_all, roster_by_name)
+        
+                else:
+                    # 개인별 보기
+                    players_sorted = sorted(per_player.keys())
+                    rowsP = []
+                    for name in players_sorted:
+                        recs = [r for r in per_player.get(name, []) if r]
+                        rowsP.append({
+                            "선수": name,
+                            "조": _player_group(name) or "-",
+                            "경기수": len(recs),
+                            "기록": " / ".join(recs) if recs else "-",
+                        })
+        
+                    dfP = pd.DataFrame(rowsP)
+        
+                    # A/B가 있으면 나눠서(가능하면) 표시
+                    if not dfP.empty and (dfP["조"].isin(["A조", "B조"]).any()):
+                        colA, colB = st.columns(2)
+                        with colA:
+                            st.markdown("#### 🟥 A조 (개인별)")
+                            dfA = dfP[dfP["조"].isin(["A조", "A"])].copy()
+                            if dfA.empty:
+                                st.caption("표시할 데이터 없음")
+                            else:
+                                render_static_on_mobile(dfA.reset_index(drop=True))
+                        with colB:
+                            st.markdown("#### 🟦 B조 (개인별)")
+                            dfB = dfP[dfP["조"].isin(["B조", "B"])].copy()
+                            if dfB.empty:
+                                st.caption("표시할 데이터 없음")
+                            else:
+                                render_static_on_mobile(dfB.reset_index(drop=True))
+        
+                        dfO = dfP[~dfP["조"].isin(["A조", "A", "B조", "B"])].copy()
+                        if not dfO.empty:
+                            st.markdown("#### ⚪ 기타")
+                            render_static_on_mobile(dfO.reset_index(drop=True))
+                    else:
+                        render_static_on_mobile(dfP.reset_index(drop=True))
+        
 
         st.markdown("---")
 
@@ -6742,607 +6868,6 @@ with tab3:
 
 
                     st.markdown("<br>", unsafe_allow_html=True)
-
-                # =====================================================
-            # 1. 현재 스코어 요약 (표) - 최신 results 기준
-            # =====================================================
-            with summary_container:
-                st.subheader("1. 현재 스코어 요약 (표)")
-
-                if not schedule:
-                    st.info("이 날짜에는 저장된 대진이 없습니다.")
-                else:
-                    summary_view_mode = st.radio(
-                        "요약 보기 방식",
-                        ["대진별 보기", "개인별 보기"],
-                        horizontal=True,
-                        key="tab3_summary_view_mode",
-                    )
-
-                    games_A_sum, games_B_sum, games_other_sum = [], [], []
-                    day_groups_snapshot = day_data.get("groups_snapshot")
-
-                    per_player_all = defaultdict(list)
-                    per_player_A = defaultdict(list)
-                    per_player_B = defaultdict(list)
-                    per_player_other = defaultdict(list)
-
-                    for idx, (gtype, t1, t2, court) in enumerate(schedule, start=1):
-                        res = results.get(str(idx)) or results.get(idx) or {}
-                        s1, s2 = res.get("t1"), res.get("t2")
-
-                        row = {
-                            "게임": idx,
-                            "코트": court,
-                            "타입": gtype,
-                            "t1": t1,
-                            "t2": t2,
-                            "t1_score": s1,
-                            "t2_score": s2,
-                        }
-
-                        all_players = t1 + t2
-                        grp_flag = classify_game_group(
-                            all_players,
-                            roster_by_name,
-                            day_groups_snapshot,
-                        )
-
-                        if grp_flag == "A":
-                            games_A_sum.append(row)
-                        elif grp_flag == "B":
-                            games_B_sum.append(row)
-                        else:
-                            games_other_sum.append(row)
-
-                        if s1 is None or s2 is None:
-                            score_t1 = ""
-                            score_t2 = ""
-                        else:
-                            score_t1 = f"{s1} : {s2}"
-                            score_t2 = f"{s2} : {s1}"
-
-                        for p in t1:
-                            per_player_all[p].append(score_t1)
-                        for p in t2:
-                            per_player_all[p].append(score_t2)
-
-                        target_dict = per_player_other
-                        if grp_flag == "A":
-                            target_dict = per_player_A
-                        elif grp_flag == "B":
-                            target_dict = per_player_B
-
-                        for p in t1:
-                            target_dict[p].append(score_t1)
-                        for p in t2:
-                            target_dict[p].append(score_t2)
-
-                    if summary_view_mode == "대진별 보기":
-
-
-                        # =========================================================
-                        # ✅ [대진표 캡처 + 텍스트 복사용] 준비 (24칸 들여쓰기)
-                        #   - 대진별 보기에서만 동작
-                        # =========================================================
-
-                        def _team_join(x):
-                            if isinstance(x, (list, tuple)):
-                                return ",".join([str(v).strip() for v in x if str(v).strip()])
-                            s = re.sub(r"<[^>]*>", "", str(x)).strip()
-                            s = re.sub(r"\s+", " ", s).strip()
-                            parts = [p.strip() for p in s.split(" ") if p.strip()]
-                            return ",".join(parts)
-
-                        def build_fixture_text_by_round(schedule_list):
-                            """
-                            schedule: [(gtype, t1, t2, court), ...]
-                            출력 포맷(예):
-                              1게임1코트 A,B vs C,D
-                              1게임2코트 E,F vs G,H
-                              쉬는사람: I,J
-
-                              2게임1코트 ...
-                              2게임2코트 ...
-                              쉬는사람: ...
-                            """
-                            if not schedule_list:
-                                return ""
-
-                            # 코트 개수 추정(안전: 유니크 코트 수)
-                            courts = []
-                            for item in schedule_list:
-                                try:
-                                    c = item[3]
-                                    courts.append(int(c))
-                                except Exception:
-                                    continue
-
-                            court_count = len(sorted(set(courts))) if courts else 1
-                            if court_count <= 0:
-                                court_count = 1
-
-                            def _team_list(x):
-                                """팀(선수) 이름을 리스트로 정규화"""
-                                if isinstance(x, (list, tuple)):
-                                    return [str(v).strip() for v in x if str(v).strip()]
-                                s = re.sub(r"<[^>]*>", "", str(x)).strip()
-                                s = re.sub(r"\s+", " ", s).strip()
-                                return [p.strip() for p in s.split(" ") if p.strip()]
-
-                            # ✅ 전체 참가자(대진표 전체에서 등장한 순서대로)
-                            all_names = []
-                            seen = set()
-                            for _, t1, t2, _ in schedule_list:
-                                for nm in _team_list(t1) + _team_list(t2):
-                                    if nm and nm not in seen:
-                                        seen.add(nm)
-                                        all_names.append(nm)
-
-                            lines = []
-                            total_rounds = (len(schedule_list) + court_count - 1) // court_count
-
-                            for round_no in range(1, total_rounds + 1):
-                                start = (round_no - 1) * court_count
-                                end = min(round_no * court_count, len(schedule_list))
-                                chunk = schedule_list[start:end]
-                                if not chunk:
-                                    continue
-
-                                playing = set()
-
-                                for i, (gtype, t1, t2, court) in enumerate(chunk):
-                                    try:
-                                        court_no = int(court)
-                                    except Exception:
-                                        court_no = i + 1
-
-                                    for nm in _team_list(t1) + _team_list(t2):
-                                        if nm:
-                                            playing.add(nm)
-
-                                    lines.append(
-                                        f"{round_no}게임{court_no}코트 {_team_join(t1)} vs {_team_join(t2)}"
-                                    )
-
-                                bench = [nm for nm in all_names if nm not in playing]
-                                lines.append("쉬는사람: " + (",".join(bench) if bench else "없음"))
-                                lines.append("")  # ✅ 한 칸 띄우고 다음 게임
-
-                            return "\n".join(lines).strip()
-
-                        fixture_text = build_fixture_text_by_round(schedule)
-
-                        safe_date_key = re.sub(r"[^0-9a-zA-Z_]+", "_", str(sel_date))
-                        capture_id = f"tab3_fixture_capture_{safe_date_key}"
-
-                        # ✅ 캡처 범위 마커 (start/end)
-                        st.markdown(f'<div id="{capture_id}__start"></div>', unsafe_allow_html=True)
-
-                        if view_mode_scores == "조별 보기 (A/B조)":
-                            if games_A_sum:
-                                st.markdown("### A조 경기 요약")
-                                render_score_summary_table(games_A_sum, roster_by_name)
-                            if games_B_sum:
-                                st.markdown("### B조 경기 요약")
-                                render_score_summary_table(games_B_sum, roster_by_name)
-                            if games_other_sum:
-                                st.markdown("### 조가 섞인 경기 / 기타")
-                                render_score_summary_table(games_other_sum, roster_by_name)
-                        else:
-                            all_games_sum = games_A_sum + games_B_sum + games_other_sum
-                            render_score_summary_table(all_games_sum, roster_by_name)
-
-                        st.markdown(f'<div id="{capture_id}__end"></div>', unsafe_allow_html=True)
-
-
-                        # =========================================================
-                        # ✅ [표 아래] JPEG 저장 + 텍스트 클립보드 복사 버튼
-                        #   - start/end 마커 사이 DOM을 복제해서 JPEG 캡처
-                        # =========================================================
-                        components.html(
-                            f"""
-                            <div style="display:flex; gap:12px; margin-top:14px; align-items:center;">
-                              <button id="{capture_id}__save"
-                                style="flex:1; padding:10px 12px; border-radius:10px; border:1px solid rgba(0,0,0,0.15);
-                                       background:white; cursor:pointer; font-weight:700;">
-                                대진표 이미지 저장 (JPEG)
-                              </button>
-
-                              <button id="{capture_id}__copy"
-                                style="flex:1; padding:10px 12px; border-radius:10px; border:1px solid rgba(0,0,0,0.15);
-                                       background:white; cursor:pointer; font-weight:700;">
-                                대진표 텍스트 저장 (클립보드)
-                              </button>
-
-                              <span id="{capture_id}__msg" style="font-size:12px; opacity:0.7;"></span>
-                            </div>
-
-                            <script>
-                            (function() {{
-                              const capId = {json.dumps(capture_id)};
-                              const fileName = "대진표_" + {json.dumps(str(sel_date))}.replace(/[^0-9a-zA-Z_\\-]+/g, "_") + ".jpg";
-                              const text = {json.dumps(fixture_text)};
-
-                              const msgEl  = document.getElementById(capId + "__msg");
-                              const btnSave = document.getElementById(capId + "__save");
-                              const btnCopy = document.getElementById(capId + "__copy");
-
-                              function setMsg(m) {{
-                                if (msgEl) msgEl.textContent = m;
-                              }}
-
-                              function ensureHtml2Canvas() {{
-                                return new Promise((resolve, reject) => {{
-                                  const p = window.parent;
-                                  if (p && p.html2canvas) {{
-                                    resolve(p.html2canvas);
-                                    return;
-                                  }}
-                                  const ps = p.document.createElement("script");
-                                  ps.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
-                                  ps.onload = () => resolve(p.html2canvas);
-                                  ps.onerror = reject;
-                                  p.document.head.appendChild(ps);
-                                }});
-                              }}
-
-                              async function copyTextFallback(t) {{
-                                const pdoc = window.parent.document;
-                                const ta = pdoc.createElement("textarea");
-                                ta.value = t;
-                                ta.style.position = "fixed";
-                                ta.style.left = "-9999px";
-                                pdoc.body.appendChild(ta);
-                                ta.focus();
-                                ta.select();
-                                try {{
-                                  pdoc.execCommand("copy");
-                                }} catch(e) {{}}
-                                ta.remove();
-                              }}
-
-                              if (btnSave) {{
-                                btnSave.onclick = async function() {{
-                                  try {{
-                                    setMsg("이미지 생성중…");
-                                    const pdoc = window.parent.document;
-
-                                    const start = pdoc.getElementById(capId + "__start");
-                                    const end   = pdoc.getElementById(capId + "__end");
-                                    if (!start || !end) {{
-                                      setMsg("캡처 마커를 찾지 못했어.");
-                                      return;
-                                    }}
-
-                                    const startTop = start.closest('div[data-testid="stElementContainer"]')
-                                                  || start.closest('div.element-container')
-                                                  || start.parentElement;
-
-                                    const endTop   = end.closest('div[data-testid="stElementContainer"]')
-                                                  || end.closest('div.element-container')
-                                                  || end.parentElement;
-
-                                    let common = startTop ? startTop.parentElement : null;
-                                    while (common && endTop && !common.contains(endTop)) {{
-                                      common = common.parentElement;
-                                    }}
-                                    if (!common) {{
-                                      setMsg("캡처 범위(공통부모) 찾기 실패");
-                                      return;
-                                    }}
-
-                                    const kids = Array.from(common.children);
-                                    const si = kids.indexOf(startTop);
-                                    const ei = kids.indexOf(endTop);
-
-                                    if (si < 0 || ei < 0 || ei <= si) {{
-                                      setMsg("캡처 범위 인덱스 오류");
-                                      return;
-                                    }}
-
-                                    const wrapper = pdoc.createElement("div");
-                                    wrapper.style.position = "fixed";
-                                    wrapper.style.left = "-100000px";
-                                    wrapper.style.top = "0";
-                                    wrapper.style.background = "#ffffff";
-                                    wrapper.style.width = (common.clientWidth || 1200) + "px";
-                                    wrapper.style.padding = "0";
-                                    wrapper.style.margin = "0";
-
-                                    for (let i = si + 1; i < ei; i++) {{
-                                      wrapper.appendChild(kids[i].cloneNode(true));
-                                    }}
-
-                                    pdoc.body.appendChild(wrapper);
-
-                                    const h2c = await ensureHtml2Canvas();
-                                    const canvas = await h2c(wrapper, {{
-                                      backgroundColor: "#ffffff",
-                                      scale: 2,
-                                      useCORS: true
-                                    }});
-
-                                    wrapper.remove();
-
-                                    const url = canvas.toDataURL("image/jpeg", 0.95);
-                                    const a = pdoc.createElement("a");
-                                    a.href = url;
-                                    a.download = fileName;
-                                    pdoc.body.appendChild(a);
-                                    a.click();
-                                    a.remove();
-
-                                    setMsg("JPEG 저장 완료!");
-                                  }} catch (e) {{
-                                    console.log(e);
-                                    setMsg("저장 실패(콘솔 확인)");
-                                  }}
-                                }};
-                              }}
-
-                              if (btnCopy) {{
-                                btnCopy.onclick = async function() {{
-                                  try {{
-                                    await window.parent.navigator.clipboard.writeText(text);
-                                    setMsg("클립보드 복사 완료!");
-                                  }} catch(e) {{
-                                    await copyTextFallback(text);
-                                    setMsg("클립보드 복사 완료!");
-                                  }}
-                                }};
-                              }}
-                            }})();
-                            </script>
-                            """,
-                            height=90,
-                        )
-
-
-                    else:
-                        # =========================================================
-                        # ✅ [개인별 보기] 캡처 마커 + 이미지 저장 버튼(only)
-                        # =========================================================
-
-                        safe_date_key_p = re.sub(r"[^0-9a-zA-Z_]+", "_", str(sel_date))
-                        capture_id_p = f"tab3_personal_capture_{safe_date_key_p}"
-
-                        # ✅ 캡처 범위 시작 마커
-                        st.markdown(f'<div id="{capture_id_p}__start"></div>', unsafe_allow_html=True)
-
-                        def render_player_score_table(title, per_dict):
-                            if not per_dict:
-                                return
-                            st.markdown(f"### {title}")
-
-                            players_sorted = sorted(per_dict.keys())
-                            rows = []
-                            for no, name in enumerate(players_sorted, start=1):
-                                games_list = per_dict[name]
-                                row = {
-                                    "번호": no,
-                                    "이름": name,
-                                    "1게임": games_list[0] if len(games_list) >= 1 else "",
-                                    "2게임": games_list[1] if len(games_list) >= 2 else "",
-                                    "3게임": games_list[2] if len(games_list) >= 3 else "",
-                                    "4게임": games_list[3] if len(games_list) >= 4 else "",
-                                }
-                                rows.append(row)
-
-                            df_players = pd.DataFrame(rows)
-                            df_players = df_players.set_index("번호")
-                            df_players.index.name = ""
-
-                            df_players.index.name = None
-                            df_players.columns.name = None
-
-                            def calc_wdl(values):
-                                w = d = l = 0
-                                for v in values:
-                                    if not isinstance(v, str):
-                                        continue
-                                    s = v.replace(" ", "")
-                                    if ":" not in s:
-                                        continue
-                                    left, right = s.split(":", 1)
-                                    try:
-                                        a = int(left)
-                                        b = int(right)
-                                    except ValueError:
-                                        continue
-
-                                    if a > b:
-                                        w += 1
-                                    elif a == b:
-                                        d += 1
-                                    else:
-                                        l += 1
-                                return pd.Series([w, d, l], index=["승", "무", "패"])
-
-                            game_cols = ["1게임", "2게임", "3게임", "4게임"]
-                            df_players[["승", "무", "패"]] = df_players[game_cols].apply(calc_wdl, axis=1)
-
-                            df_players = df_players[["이름", "승", "무", "패"] + game_cols]
-
-                            def highlight_win_loss(val):
-                                if not isinstance(val, str):
-                                    return ""
-                                s = val.replace(" ", "")
-                                if ":" not in s:
-                                    return ""
-                                left, right = s.split(":", 1)
-                                try:
-                                    a = int(left)
-                                    b = int(right)
-                                except ValueError:
-                                    return ""
-
-                                if a > b:
-                                    return "background-color: #fef9c3;"  # 노랑
-                                elif a < b:
-                                    return "background-color: #e5e7eb;"  # 회색
-                                else:
-                                    return ""
-
-                            sty_players = colorize_df_names(df_players, roster_by_name, ["이름"])
-                            sty_players = sty_players.applymap(highlight_win_loss, subset=game_cols)
-                            smart_table(sty_players)
-
-                        # =========================================================
-                        # ✅ 개인별 테이블 출력(기존 로직)
-                        # =========================================================
-                        if view_mode_scores == "조별 보기 (A/B조)":
-                            has_any = False
-                            if per_player_A:
-                                render_player_score_table("A조 개인별 스코어", per_player_A)
-                                has_any = True
-                            if per_player_B:
-                                render_player_score_table("B조 개인별 스코어", per_player_B)
-                                has_any = True
-                            if per_player_other:
-                                render_player_score_table("조가 섞인 경기 / 기타 개인별 스코어", per_player_other)
-                                has_any = True
-                            if not has_any:
-                                st.info("개인별로 표시할 스코어가 없습니다.")
-                        else:
-                            if not per_player_all:
-                                st.info("개인별로 표시할 스코어가 없습니다.")
-                            else:
-                                render_player_score_table("전체 개인별 스코어", per_player_all)
-
-                        # ✅ 캡처 범위 끝 마커
-                        st.markdown(f'<div id="{capture_id_p}__end"></div>', unsafe_allow_html=True)
-
-                        # =========================================================
-                        # ✅ [개인별 보기] 이미지 저장 버튼만 (JPEG)
-                        #   - start/end 사이 DOM을 복제해서 캡처
-                        # =========================================================
-                        components.html(
-                            f"""
-                            <div style="display:flex; gap:12px; margin-top:14px; align-items:center;">
-                              <button id="{capture_id_p}__save"
-                                style="flex:1; padding:10px 12px; border-radius:10px; border:1px solid rgba(0,0,0,0.15);
-                                       background:white; cursor:pointer; font-weight:700;">
-                                개인별 표 이미지 저장 (JPEG)
-                              </button>
-                              <span id="{capture_id_p}__msg" style="font-size:12px; opacity:0.7;"></span>
-                            </div>
-
-                            <script>
-                            (function() {{
-                              const capId = {json.dumps(capture_id_p)};
-                              const fileName = "개인별표_" + {json.dumps(str(sel_date))}.replace(/[^0-9a-zA-Z_\\-]+/g, "_") + ".jpg";
-
-                              const msgEl  = document.getElementById(capId + "__msg");
-                              const btnSave = document.getElementById(capId + "__save");
-
-                              function setMsg(m) {{
-                                if (msgEl) msgEl.textContent = m;
-                              }}
-
-                              function ensureHtml2Canvas() {{
-                                return new Promise((resolve, reject) => {{
-                                  const p = window.parent;
-                                  if (p && p.html2canvas) {{
-                                    resolve(p.html2canvas);
-                                    return;
-                                  }}
-                                  const ps = p.document.createElement("script");
-                                  ps.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
-                                  ps.onload = () => resolve(p.html2canvas);
-                                  ps.onerror = reject;
-                                  p.document.head.appendChild(ps);
-                                }});
-                              }}
-
-                              if (btnSave) {{
-                                btnSave.onclick = async function() {{
-                                  try {{
-                                    setMsg("이미지 생성중…");
-                                    const pdoc = window.parent.document;
-
-                                    const start = pdoc.getElementById(capId + "__start");
-                                    const end   = pdoc.getElementById(capId + "__end");
-                                    if (!start || !end) {{
-                                      setMsg("캡처 마커를 찾지 못했어.");
-                                      return;
-                                    }}
-
-                                    const startTop = start.closest('div[data-testid="stElementContainer"]')
-                                                  || start.closest('div.element-container')
-                                                  || start.parentElement;
-
-                                    const endTop   = end.closest('div[data-testid="stElementContainer"]')
-                                                  || end.closest('div.element-container')
-                                                  || end.parentElement;
-
-                                    let common = startTop ? startTop.parentElement : null;
-                                    while (common && endTop && !common.contains(endTop)) {{
-                                      common = common.parentElement;
-                                    }}
-                                    if (!common) {{
-                                      setMsg("캡처 범위(공통부모) 찾기 실패");
-                                      return;
-                                    }}
-
-                                    const kids = Array.from(common.children);
-                                    const si = kids.indexOf(startTop);
-                                    const ei = kids.indexOf(endTop);
-
-                                    if (si < 0 || ei < 0 || ei <= si) {{
-                                      setMsg("캡처 범위 인덱스 오류");
-                                      return;
-                                    }}
-
-                                    const wrapper = pdoc.createElement("div");
-                                    wrapper.style.position = "fixed";
-                                    wrapper.style.left = "-100000px";
-                                    wrapper.style.top = "0";
-                                    wrapper.style.background = "#ffffff";
-                                    wrapper.style.width = (common.clientWidth || 1200) + "px";
-                                    wrapper.style.padding = "0";
-                                    wrapper.style.margin = "0";
-
-                                    for (let i = si + 1; i < ei; i++) {{
-                                      wrapper.appendChild(kids[i].cloneNode(true));
-                                    }}
-
-                                    pdoc.body.appendChild(wrapper);
-
-                                    const h2c = await ensureHtml2Canvas();
-                                    const canvas = await h2c(wrapper, {{
-                                      backgroundColor: "#ffffff",
-                                      scale: 2,
-                                      useCORS: true
-                                    }});
-
-                                    wrapper.remove();
-
-                                    const url = canvas.toDataURL("image/jpeg", 0.95);
-                                    const a = pdoc.createElement("a");
-                                    a.href = url;
-                                    a.download = fileName;
-                                    pdoc.body.appendChild(a);
-                                    a.click();
-                                    a.remove();
-
-                                    setMsg("JPEG 저장 완료!");
-                                  }} catch (e) {{
-                                    console.log(e);
-                                    setMsg("저장 실패(콘솔 확인)");
-                                  }}
-                                }};
-                              }}
-                            }})();
-                            </script>
-                            """,
-                            height=80,
-                        )
-
-
-        else:
-            st.info("이 날짜에는 저장된 대진이 없습니다.")
-
 
 # =========================================================
 # 4) 개인별 통계
