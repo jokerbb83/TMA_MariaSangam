@@ -48,7 +48,7 @@ IS_SCOREBOARD = APP_MODE in ("scb", "scoreboard")
 # ✅ 완전 읽기 전용(어떤 경우에도 players/sessions 저장(쓰기) 금지)
 #   - 스코어보드에서는 기본 True
 #   - 필요하면 환경변수로 강제할 수 있음: MSC_READ_ONLY=1
-READ_ONLY = IS_SCOREBOARD or ((APP_MODE != "admin") and (os.getenv("MSC_READ_ONLY", "0").strip() == "1"))
+READ_ONLY = IS_SCOREBOARD or (os.getenv("MSC_READ_ONLY", "0").strip() == "1")
 
 def APP_PURPOSE_NAME() -> str:
     return SCOREBOARD_PURPOSE if IS_SCOREBOARD else ADMIN_PURPOSE
@@ -823,87 +823,7 @@ def load_sessions():
 
 
 def save_sessions(sessions):
-    """세션 저장
-    - 옵저버/스코어보드(READ_ONLY)에서는 절대 저장하지 않음
-    - GitHub secrets가 있으면 GitHub(Contents API)로도 저장해서 Streamlit Cloud에서도 영구 반영
-    - 삭제도 반영되도록 '로컬(sessions)이 소스 오브 트루스'가 되게 머지
-    """
-    # ✅ 읽기전용이면 무조건 금지
-    if READ_ONLY:
-        return False
-
-    # 1) 로컬 파일 저장(로컬 실행 환경용)
-    ok_local = True
-    try:
-        ok_local = bool(save_json(SESSIONS_FILE, sessions))
-    except Exception:
-        ok_local = False
-
-    # 2) GitHub 저장(설정되어 있으면)
-    repo = str(st.secrets.get("GITHUB_REPO", "")).strip()
-    branch = str(st.secrets.get("GITHUB_BRANCH", "main")).strip()
-    token = st.secrets.get("GITHUB_TOKEN", "") or None
-    file_path = str(
-        st.secrets.get("GITHUB_SESSIONS_FILE_PATH",
-                       st.secrets.get("GITHUB_FILE_PATH", SESSIONS_FILE))
-    ).strip().lstrip("/")
-
-    # token이 없으면 private repo 저장은 불가. (public read는 가능)
-    if repo and token and file_path:
-        try:
-            ok, remote = _github_read_json(repo, branch, file_path, token)
-            if not isinstance(remote, dict):
-                remote = {}
-
-            def _merge_day(remote_day: dict, local_day: dict) -> dict:
-                remote_day = remote_day if isinstance(remote_day, dict) else {}
-                local_day = local_day if isinstance(local_day, dict) else {}
-
-                out = dict(remote_day)
-                out.update(local_day)
-
-                # ✅ schedule 보호: 로컬 schedule이 비어있으면 원격 schedule 유지
-                rsch = remote_day.get("schedule")
-                lsch = local_day.get("schedule")
-                if (not lsch) and rsch:
-                    out["schedule"] = rsch
-
-                # ✅ groups_snapshot도 동일 보호
-                if (not local_day.get("groups_snapshot")) and remote_day.get("groups_snapshot"):
-                    out["groups_snapshot"] = remote_day.get("groups_snapshot")
-
-                return out
-
-            # ✅ 삭제 반영: sessions(로컬)을 소스 오브 트루스로 사용
-            merged = {}
-
-            # '전체' 같은 특수 키는 로컬에 없더라도 원격에 있으면 유지(있으면)
-            if "전체" in remote and "전체" not in sessions:
-                merged["전체"] = remote.get("전체")
-
-            for d, lday in sessions.items():
-                merged[d] = _merge_day(remote.get(d, {}), lday)
-
-            github_upsert_json_file(
-                file_path=file_path,
-                new_data=merged,
-                commit_message="Save match sessions from Streamlit",
-                repo=repo,
-                branch=branch,
-                token=token,
-            )
-
-            # ✅ 캐시 초기화 (스코어보드가 바로 최신 읽게)
-            try:
-                _github_read_json.clear()
-            except Exception:
-                pass
-
-        except Exception:
-            # GitHub 저장이 실패해도 로컬 저장 결과는 유지
-            pass
-
-    return ok_local
+    save_json(SESSIONS_FILE, sessions)
 
 
 def render_static_on_mobile(df_or_styler):
@@ -6027,667 +5947,9 @@ with tab3:
         summary_container = st.container()
 
         st.markdown("---")
-        # 1. 현재 스코어 요약 (표) - 최신 results 기준
-        # =====================================================
-        with summary_container:
-            st.subheader("1. 현재 스코어 요약 (표)")
 
-            if not schedule:
-                st.info("이 날짜에는 저장된 대진이 없습니다.")
-            else:
-                summary_view_mode = st.radio(
-                    "요약 보기 방식",
-                    ["대진별 보기", "개인별 보기"],
-                    horizontal=True,
-                    key="tab3_summary_view_mode",
-                )
 
-                games_A_sum, games_B_sum, games_other_sum = [], [], []
-                day_groups_snapshot = day_data.get("groups_snapshot")
-
-                per_player_all = defaultdict(list)
-                per_player_A = defaultdict(list)
-                per_player_B = defaultdict(list)
-                per_player_other = defaultdict(list)
-
-                for idx, (gtype, t1, t2, court) in enumerate(schedule, start=1):
-                    res = results.get(str(idx)) or results.get(idx) or {}
-                    s1, s2 = res.get("t1"), res.get("t2")
-
-                    row = {
-                        "게임": idx,
-                        "코트": court,
-                        "타입": gtype,
-                        "t1": t1,
-                        "t2": t2,
-                        "t1_score": s1,
-                        "t2_score": s2,
-                    }
-
-                    all_players = t1 + t2
-                    grp_flag = classify_game_group(
-                        all_players,
-                        roster_by_name,
-                        day_groups_snapshot,
-                    )
-
-                    if grp_flag == "A":
-                        games_A_sum.append(row)
-                    elif grp_flag == "B":
-                        games_B_sum.append(row)
-                    else:
-                        games_other_sum.append(row)
-
-                    if s1 is None or s2 is None:
-                        score_t1 = ""
-                        score_t2 = ""
-                    else:
-                        score_t1 = f"{s1} : {s2}"
-                        score_t2 = f"{s2} : {s1}"
-
-                    for p in t1:
-                        per_player_all[p].append(score_t1)
-                    for p in t2:
-                        per_player_all[p].append(score_t2)
-
-                    target_dict = per_player_other
-                    if grp_flag == "A":
-                        target_dict = per_player_A
-                    elif grp_flag == "B":
-                        target_dict = per_player_B
-
-                    for p in t1:
-                        target_dict[p].append(score_t1)
-                    for p in t2:
-                        target_dict[p].append(score_t2)
-
-                if summary_view_mode == "대진별 보기":
-
-
-                    # =========================================================
-                    # ✅ [대진표 캡처 + 텍스트 복사용] 준비 (24칸 들여쓰기)
-                    #   - 대진별 보기에서만 동작
-                    # =========================================================
-
-                    def _team_join(x):
-                        if isinstance(x, (list, tuple)):
-                            return ",".join([str(v).strip() for v in x if str(v).strip()])
-                        s = re.sub(r"<[^>]*>", "", str(x)).strip()
-                        s = re.sub(r"\s+", " ", s).strip()
-                        parts = [p.strip() for p in s.split(" ") if p.strip()]
-                        return ",".join(parts)
-
-                    def build_fixture_text_by_round(schedule_list):
-                        """
-                        schedule: [(gtype, t1, t2, court), ...]
-                        출력 포맷(예):
-                          1게임1코트 A,B vs C,D
-                          1게임2코트 E,F vs G,H
-                          쉬는사람: I,J
-
-                          2게임1코트 ...
-                          2게임2코트 ...
-                          쉬는사람: ...
-                        """
-                        def _team_join(x):
-                            # team을 텍스트로 안전하게 합치기 (리스트/튜플/문자열 모두 지원)
-                            if isinstance(x, (list, tuple)):
-                                return ",".join([str(v).strip() for v in x if str(v).strip()])
-                            s = re.sub(r"<[^>]*>", "", str(x)).strip()
-                            s = re.sub(r"\s+", " ", s).strip()
-                            parts = [p.strip() for p in s.split(" ") if p.strip()]
-                            return ",".join(parts)
-
-                        if not schedule_list:
-                            return ""
-
-                        # 코트 개수 추정(안전: 유니크 코트 수)
-                        courts = []
-                        for item in schedule_list:
-                            try:
-                                c = item[3]
-                                courts.append(int(c))
-                            except Exception:
-                                continue
-
-                        court_count = len(sorted(set(courts))) if courts else 1
-                        if court_count <= 0:
-                            court_count = 1
-
-                        def _team_list(x):
-                            """팀(선수) 이름을 리스트로 정규화"""
-                            if isinstance(x, (list, tuple)):
-                                return [str(v).strip() for v in x if str(v).strip()]
-                            s = re.sub(r"<[^>]*>", "", str(x)).strip()
-                            s = re.sub(r"\s+", " ", s).strip()
-                            return [p.strip() for p in s.split(" ") if p.strip()]
-
-                        # ✅ 전체 참가자(대진표 전체에서 등장한 순서대로)
-                        all_names = []
-                        seen = set()
-                        for _, t1, t2, _ in schedule_list:
-                            for nm in _team_list(t1) + _team_list(t2):
-                                if nm and nm not in seen:
-                                    seen.add(nm)
-                                    all_names.append(nm)
-
-                        lines = []
-                        total_rounds = (len(schedule_list) + court_count - 1) // court_count
-
-                        for round_no in range(1, total_rounds + 1):
-                            start = (round_no - 1) * court_count
-                            end = min(round_no * court_count, len(schedule_list))
-                            chunk = schedule_list[start:end]
-                            if not chunk:
-                                continue
-
-                            playing = set()
-
-                            for i, (gtype, t1, t2, court) in enumerate(chunk):
-                                try:
-                                    court_no = int(court)
-                                except Exception:
-                                    court_no = i + 1
-
-                                for nm in _team_list(t1) + _team_list(t2):
-                                    if nm:
-                                        playing.add(nm)
-
-                                lines.append(
-                                    f"{round_no}게임{court_no}코트 {_team_join(t1)} vs {_team_join(t2)}"
-                                )
-
-                            bench = [nm for nm in all_names if nm not in playing]
-                            lines.append("쉬는사람: " + (",".join(bench) if bench else "없음"))
-                            lines.append("")  # ✅ 한 칸 띄우고 다음 게임
-
-                        return "\n".join(lines).strip()
-
-                    fixture_text = build_fixture_text_by_round(schedule)
-
-                    safe_date_key = re.sub(r"[^0-9a-zA-Z_]+", "_", str(sel_date))
-                    capture_id = f"tab3_fixture_capture_{safe_date_key}"
-
-                    # ✅ 캡처 범위 마커 (start/end)
-                    st.markdown(f'<div id="{capture_id}__start"></div>', unsafe_allow_html=True)
-
-                    if view_mode_scores == "조별 보기 (A/B조)":
-                        if games_A_sum:
-                            st.markdown("### A조 경기 요약")
-                            render_score_summary_table(games_A_sum, roster_by_name)
-                        if games_B_sum:
-                            st.markdown("### B조 경기 요약")
-                            render_score_summary_table(games_B_sum, roster_by_name)
-                        if games_other_sum:
-                            st.markdown("### 조가 섞인 경기 / 기타")
-                            render_score_summary_table(games_other_sum, roster_by_name)
-                    else:
-                        all_games_sum = games_A_sum + games_B_sum + games_other_sum
-                        render_score_summary_table(all_games_sum, roster_by_name)
-
-                    st.markdown(f'<div id="{capture_id}__end"></div>', unsafe_allow_html=True)
-
-
-                    # =========================================================
-                    # ✅ [표 아래] JPEG 저장 + 텍스트 클립보드 복사 버튼
-                    #   - start/end 마커 사이 DOM을 복제해서 JPEG 캡처
-                    # =========================================================
-                    components.html(
-                        f"""
-                        <div style="display:flex; gap:12px; margin-top:14px; align-items:center;">
-                          <button id="{capture_id}__save"
-                            style="flex:1; padding:10px 12px; border-radius:10px; border:1px solid rgba(0,0,0,0.15);
-                                   background:white; cursor:pointer; font-weight:700;">
-                            대진표 이미지 저장 (JPEG)
-                          </button>
-
-                          <button id="{capture_id}__copy"
-                            style="flex:1; padding:10px 12px; border-radius:10px; border:1px solid rgba(0,0,0,0.15);
-                                   background:white; cursor:pointer; font-weight:700;">
-                            대진표 텍스트 저장 (클립보드)
-                          </button>
-
-                          <span id="{capture_id}__msg" style="font-size:12px; opacity:0.7;"></span>
-                        </div>
-
-                        <script>
-                        (function() {{
-                          const capId = {json.dumps(capture_id)};
-                          const fileName = "대진표_" + {json.dumps(str(sel_date))}.replace(/[^0-9a-zA-Z_\\-]+/g, "_") + ".jpg";
-                          const text = {json.dumps(fixture_text)};
-
-                          const msgEl  = document.getElementById(capId + "__msg");
-                          const btnSave = document.getElementById(capId + "__save");
-                          const btnCopy = document.getElementById(capId + "__copy");
-
-                          function setMsg(m) {{
-                            if (msgEl) msgEl.textContent = m;
-                          }}
-
-                          function ensureHtml2Canvas() {{
-                            return new Promise((resolve, reject) => {{
-                              const p = window.parent;
-                              if (p && p.html2canvas) {{
-                                resolve(p.html2canvas);
-                                return;
-                              }}
-                              const ps = p.document.createElement("script");
-                              ps.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
-                              ps.onload = () => resolve(p.html2canvas);
-                              ps.onerror = reject;
-                              p.document.head.appendChild(ps);
-                            }});
-                          }}
-
-                          async function copyTextFallback(t) {{
-                            const pdoc = window.parent.document;
-                            const ta = pdoc.createElement("textarea");
-                            ta.value = t;
-                            ta.style.position = "fixed";
-                            ta.style.left = "-9999px";
-                            pdoc.body.appendChild(ta);
-                            ta.focus();
-                            ta.select();
-                            try {{
-                              pdoc.execCommand("copy");
-                            }} catch(e) {{}}
-                            ta.remove();
-                          }}
-
-                          if (btnSave) {{
-                            btnSave.onclick = async function() {{
-                              try {{
-                                setMsg("이미지 생성중…");
-                                const pdoc = window.parent.document;
-
-                                const start = pdoc.getElementById(capId + "__start");
-                                const end   = pdoc.getElementById(capId + "__end");
-                                if (!start || !end) {{
-                                  setMsg("캡처 마커를 찾지 못했어.");
-                                  return;
-                                }}
-
-                                const startTop = start.closest('div[data-testid="stElementContainer"]')
-                                              || start.closest('div.element-container')
-                                              || start.parentElement;
-
-                                const endTop   = end.closest('div[data-testid="stElementContainer"]')
-                                              || end.closest('div.element-container')
-                                              || end.parentElement;
-
-                                let common = startTop ? startTop.parentElement : null;
-                                while (common && endTop && !common.contains(endTop)) {{
-                                  common = common.parentElement;
-                                }}
-                                if (!common) {{
-                                  setMsg("캡처 범위(공통부모) 찾기 실패");
-                                  return;
-                                }}
-
-                                const kids = Array.from(common.children);
-                                const si = kids.indexOf(startTop);
-                                const ei = kids.indexOf(endTop);
-
-                                if (si < 0 || ei < 0 || ei <= si) {{
-                                  setMsg("캡처 범위 인덱스 오류");
-                                  return;
-                                }}
-
-                                const wrapper = pdoc.createElement("div");
-                                wrapper.style.position = "fixed";
-                                wrapper.style.left = "-100000px";
-                                wrapper.style.top = "0";
-                                wrapper.style.background = "#ffffff";
-                                wrapper.style.width = (common.clientWidth || 1200) + "px";
-                                wrapper.style.padding = "0";
-                                wrapper.style.margin = "0";
-
-                                for (let i = si + 1; i < ei; i++) {{
-                                  wrapper.appendChild(kids[i].cloneNode(true));
-                                }}
-
-                                pdoc.body.appendChild(wrapper);
-
-                                const h2c = await ensureHtml2Canvas();
-                                const canvas = await h2c(wrapper, {{
-                                  backgroundColor: "#ffffff",
-                                  scale: 2,
-                                  useCORS: true
-                                }});
-
-                                wrapper.remove();
-
-                                const url = canvas.toDataURL("image/jpeg", 0.95);
-                                const a = pdoc.createElement("a");
-                                a.href = url;
-                                a.download = fileName;
-                                pdoc.body.appendChild(a);
-                                a.click();
-                                a.remove();
-
-                                setMsg("JPEG 저장 완료!");
-                              }} catch (e) {{
-                                console.log(e);
-                                setMsg("저장 실패(콘솔 확인)");
-                              }}
-                            }};
-                          }}
-
-                          if (btnCopy) {{
-                            btnCopy.onclick = async function() {{
-                              try {{
-                                await window.parent.navigator.clipboard.writeText(text);
-                                setMsg("클립보드 복사 완료!");
-                              }} catch(e) {{
-                                await copyTextFallback(text);
-                                setMsg("클립보드 복사 완료!");
-                              }}
-                            }};
-                          }}
-                        }})();
-                        </script>
-                        """,
-                        height=90,
-                    )
-
-
-                else:
-                    # =========================================================
-                    # ✅ [개인별 보기] 캡처 마커 + 이미지 저장 버튼(only)
-                    # =========================================================
-
-                    safe_date_key_p = re.sub(r"[^0-9a-zA-Z_]+", "_", str(sel_date))
-                    capture_id_p = f"tab3_personal_capture_{safe_date_key_p}"
-
-                    # ✅ 캡처 범위 시작 마커
-                    st.markdown(f'<div id="{capture_id_p}__start"></div>', unsafe_allow_html=True)
-
-                    def render_player_score_table(title, per_dict):
-                        if not per_dict:
-                            return
-                        st.markdown(f"### {title}")
-
-                        players_sorted = sorted(per_dict.keys())
-                        rows = []
-                        for no, name in enumerate(players_sorted, start=1):
-                            games_list = per_dict[name]
-                            row = {
-                                "번호": no,
-                                "이름": name,
-                                "1게임": games_list[0] if len(games_list) >= 1 else "",
-                                "2게임": games_list[1] if len(games_list) >= 2 else "",
-                                "3게임": games_list[2] if len(games_list) >= 3 else "",
-                                "4게임": games_list[3] if len(games_list) >= 4 else "",
-                            }
-                            rows.append(row)
-
-                        df_players = pd.DataFrame(rows)
-                        df_players = df_players.set_index("번호")
-                        df_players.index.name = ""
-
-                        df_players.index.name = None
-                        df_players.columns.name = None
-
-                        def calc_wdl(values):
-                            w = d = l = 0
-                            for v in values:
-                                if not isinstance(v, str):
-                                    continue
-                                s = v.replace(" ", "")
-                                if ":" not in s:
-                                    continue
-                                left, right = s.split(":", 1)
-                                try:
-                                    a = int(left)
-                                    b = int(right)
-                                except ValueError:
-                                    continue
-
-                                if a > b:
-                                    w += 1
-                                elif a == b:
-                                    d += 1
-                                else:
-                                    l += 1
-                            return pd.Series([w, d, l], index=["승", "무", "패"])
-
-                        game_cols = ["1게임", "2게임", "3게임", "4게임"]
-                        df_players[["승", "무", "패"]] = df_players[game_cols].apply(calc_wdl, axis=1)
-
-                        df_players = df_players[["이름", "승", "무", "패"] + game_cols]
-
-                        def highlight_win_loss(val):
-                            if not isinstance(val, str):
-                                return ""
-                            s = val.replace(" ", "")
-                            if ":" not in s:
-                                return ""
-                            left, right = s.split(":", 1)
-                            try:
-                                a = int(left)
-                                b = int(right)
-                            except ValueError:
-                                return ""
-
-                            if a > b:
-                                return "background-color: #fef9c3;"  # 노랑
-                            elif a < b:
-                                return "background-color: #e5e7eb;"  # 회색
-                            else:
-                                return ""
-
-                        sty_players = colorize_df_names(df_players, roster_by_name, ["이름"])
-                        sty_players = sty_players.applymap(highlight_win_loss, subset=game_cols)
-                        smart_table(sty_players)
-
-                    # =========================================================
-                    # ✅ 개인별 테이블 출력(기존 로직)
-                    # =========================================================
-                    if view_mode_scores == "조별 보기 (A/B조)":
-                        has_any = False
-                        if per_player_A:
-                            render_player_score_table("A조 개인별 스코어", per_player_A)
-                            has_any = True
-                        if per_player_B:
-                            render_player_score_table("B조 개인별 스코어", per_player_B)
-                            has_any = True
-                        if per_player_other:
-                            render_player_score_table("조가 섞인 경기 / 기타 개인별 스코어", per_player_other)
-                            has_any = True
-                        if not has_any:
-                            st.info("개인별로 표시할 스코어가 없습니다.")
-                    else:
-                        if not per_player_all:
-                            st.info("개인별로 표시할 스코어가 없습니다.")
-                        else:
-                            render_player_score_table("전체 개인별 스코어", per_player_all)
-
-                    # ✅ 캡처 범위 끝 마커
-                    st.markdown(f'<div id="{capture_id_p}__end"></div>', unsafe_allow_html=True)
-
-                    # =========================================================
-                    # ✅ [개인별 보기] 이미지 저장 버튼만 (JPEG)
-                    #   - start/end 사이 DOM을 복제해서 캡처
-                    # =========================================================
-                    components.html(
-                        f"""
-                        <div style="display:flex; gap:12px; margin-top:14px; align-items:center;">
-                          <button id="{capture_id_p}__save"
-                            style="flex:1; padding:10px 12px; border-radius:10px; border:1px solid rgba(0,0,0,0.15);
-                                   background:white; cursor:pointer; font-weight:700;">
-                            개인별 표 이미지 저장 (JPEG)
-                          </button>
-                          <span id="{capture_id_p}__msg" style="font-size:12px; opacity:0.7;"></span>
-                        </div>
-
-                        <script>
-                        (function() {{
-                          const capId = {json.dumps(capture_id_p)};
-                          const fileName = "개인별표_" + {json.dumps(str(sel_date))}.replace(/[^0-9a-zA-Z_\\-]+/g, "_") + ".jpg";
-
-                          const msgEl  = document.getElementById(capId + "__msg");
-                          const btnSave = document.getElementById(capId + "__save");
-
-                          function setMsg(m) {{
-                            if (msgEl) msgEl.textContent = m;
-                          }}
-
-                          function ensureHtml2Canvas() {{
-                            return new Promise((resolve, reject) => {{
-                              const p = window.parent;
-                              if (p && p.html2canvas) {{
-                                resolve(p.html2canvas);
-                                return;
-                              }}
-                              const ps = p.document.createElement("script");
-                              ps.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
-                              ps.onload = () => resolve(p.html2canvas);
-                              ps.onerror = reject;
-                              p.document.head.appendChild(ps);
-                            }});
-                          }}
-
-                          if (btnSave) {{
-                            btnSave.onclick = async function() {{
-                              try {{
-                                setMsg("이미지 생성중…");
-                                const pdoc = window.parent.document;
-
-                                const start = pdoc.getElementById(capId + "__start");
-                                const end   = pdoc.getElementById(capId + "__end");
-                                if (!start || !end) {{
-                                  setMsg("캡처 마커를 찾지 못했어.");
-                                  return;
-                                }}
-
-                                const startTop = start.closest('div[data-testid="stElementContainer"]')
-                                              || start.closest('div.element-container')
-                                              || start.parentElement;
-
-                                const endTop   = end.closest('div[data-testid="stElementContainer"]')
-                                              || end.closest('div.element-container')
-                                              || end.parentElement;
-
-                                let common = startTop ? startTop.parentElement : null;
-                                while (common && endTop && !common.contains(endTop)) {{
-                                  common = common.parentElement;
-                                }}
-                                if (!common) {{
-                                  setMsg("캡처 범위(공통부모) 찾기 실패");
-                                  return;
-                                }}
-
-                                const kids = Array.from(common.children);
-                                const si = kids.indexOf(startTop);
-                                const ei = kids.indexOf(endTop);
-
-                                if (si < 0 || ei < 0 || ei <= si) {{
-                                  setMsg("캡처 범위 인덱스 오류");
-                                  return;
-                                }}
-
-                                const wrapper = pdoc.createElement("div");
-                                wrapper.style.position = "fixed";
-                                wrapper.style.left = "-100000px";
-                                wrapper.style.top = "0";
-                                wrapper.style.background = "#ffffff";
-                                wrapper.style.width = (common.clientWidth || 1200) + "px";
-                                wrapper.style.padding = "0";
-                                wrapper.style.margin = "0";
-
-                                for (let i = si + 1; i < ei; i++) {{
-                                  wrapper.appendChild(kids[i].cloneNode(true));
-                                }}
-
-                                pdoc.body.appendChild(wrapper);
-
-                                const h2c = await ensureHtml2Canvas();
-                                const canvas = await h2c(wrapper, {{
-                                  backgroundColor: "#ffffff",
-                                  scale: 2,
-                                  useCORS: true
-                                }});
-
-                                wrapper.remove();
-
-                                const url = canvas.toDataURL("image/jpeg", 0.95);
-                                const a = pdoc.createElement("a");
-                                a.href = url;
-                                a.download = fileName;
-                                pdoc.body.appendChild(a);
-                                a.click();
-                                a.remove();
-
-                                setMsg("JPEG 저장 완료!");
-                              }} catch (e) {{
-                                console.log(e);
-                                setMsg("저장 실패(콘솔 확인)");
-                              }}
-                            }};
-                          }}
-                        }})();
-                        </script>
-                        """,
-                        height=80,
-                    )
-
-
-
-
-# =========================================================
-
-
-        # =========================================================
-        # 2. 날짜별 요약 리포트 (선택 날짜 기준)
-        #   - ✅ 스코어보드/옵저버(읽기 전용) 화면에서만 여기(요약표 아래) 표시
-        #   - ✅ 관리자 모드에서는 아래 '전체 경기 스코어' 섹션 하단에서 1번만 표시
-        # =========================================================
-        if IS_OBSERVER:
-            try:
-                report_lines = build_daily_report(sel_date, day_data)
-                if report_lines:
-                    html_lines = ''.join([f'<li>{line}</li>' for line in report_lines])
-                    st.markdown(
-                        f"""
-                        <div style="
-                            margin:0.8rem 0 0.9rem 0;
-                            padding:0.9rem 1.0rem;
-                            border-radius:12px;
-                            background:#eef2ff;
-                            border:1px solid #c7d2fe;
-                            font-size:0.9rem;
-                            line-height:1.5;
-                        ">
-                            <div style="
-                                display:flex;
-                                align-items:center;
-                                gap:0.55rem;
-                                font-weight:800;
-                                font-size:1.05rem;
-                                color:#111827;
-                                margin-bottom:0.5rem;
-                            ">
-                                <span style="
-                                    display:inline-flex;
-                                    width:30px;height:30px;
-                                    align-items:center;justify-content:center;
-                                    border-radius:10px;
-                                    background:#e0e7ff;
-                                    border:1px solid #c7d2fe;
-                                ">📋</span>
-                                <span>{sel_date} 요약 리포트</span>
-                            </div>
-                            <ul style="margin:0 0 0 1.1rem;padding:0;">
-                                {html_lines}
-                            </ul>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-            except Exception as e:
-                st.error(f"요약 리포트 생성 중 오류: {e}")
-
-# -----------------------------
+        # -----------------------------
         # ✅ PC에서만 스코어 입력 줄바꿈 방지 CSS
         # -----------------------------
         if not mobile_mode:
@@ -7266,283 +6528,434 @@ with tab3:
                 st.markdown("---")
 
 
-                if not IS_OBSERVER:
-                    col_a, col_b = st.columns([3, 2])
-                    with col_a:
-                        save_to_github_clicked = st.button("✅ 경기기록 저장", use_container_width=True)
-                    with col_b:
-                        st.write("")
-                    
-                    if save_to_github_clicked:
-                        try:
-                            # ✅ secrets 체크
-                            repo = str(st.secrets.get("GITHUB_REPO", "")).strip()
-                            branch = str(st.secrets.get("GITHUB_BRANCH", "main")).strip()
-                            token = st.secrets.get("GITHUB_TOKEN", "") or None
-                            file_path = str(st.secrets.get("GITHUB_SESSIONS_FILE_PATH", st.secrets.get("GITHUB_FILE_PATH", SESSIONS_FILE))).strip().lstrip("/")
-                    
-                            if not repo or not token or not file_path:
-                                st.error("GitHub secrets 설정이 비어있어. (GITHUB_REPO / GITHUB_TOKEN / GITHUB_FILE_PATH 확인)")
-                                raise RuntimeError("GitHub secrets 설정이 비어있어. (GITHUB_REPO / GITHUB_TOKEN / GITHUB_FILE_PATH 확인)")
-                    
-                            # ✅ 최신 sessions 확보: (1) 로컬 파일 → (2) session_state로 덮기
-                            sessions_local = {}
-                            try:
-                                if os.path.exists(SESSIONS_FILE):
-                                    with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
-                                        sessions_local = json.load(f)
-                            except Exception:
-                                sessions_local = {}
-                    
-                            if not isinstance(sessions_local, dict):
-                                sessions_local = {}
-                    
-                            sessions_state = st.session_state.get("sessions", {})
-                            if isinstance(sessions_state, dict):
-                                # state가 더 최신일 수 있으니 state 우선
-                                sessions_local.update(sessions_state)
-                    
-                            # ✅ 원격도 읽어서 병합 (빈 schedule로 덮어쓰기 방지)
-                            ok, sessions_remote = _github_read_json(repo, branch, file_path, token)
-                            if not isinstance(sessions_remote, dict):
-                                sessions_remote = {}
-                    
-                            def _merge_day(remote_day: dict, local_day: dict) -> dict:
-                                remote_day = remote_day if isinstance(remote_day, dict) else {}
-                                local_day = local_day if isinstance(local_day, dict) else {}
-                    
-                                out = dict(remote_day)
-                                out.update(local_day)
-                    
-                                # ✅ schedule 보호: 로컬 schedule이 비어있으면 원격 schedule 유지
-                                rsch = remote_day.get("schedule")
-                                lsch = local_day.get("schedule")
-                                if (not lsch) and rsch:
-                                    out["schedule"] = rsch
-                    
-                                # ✅ groups_snapshot도 동일 보호
-                                if (not local_day.get("groups_snapshot")) and remote_day.get("groups_snapshot"):
-                                    out["groups_snapshot"] = remote_day.get("groups_snapshot")
-                    
-                                return out
-                    
-                            merged = dict(sessions_remote)
-                            for d, lday in sessions_local.items():
-                                merged[d] = _merge_day(sessions_remote.get(d, {}), lday)
-                    
-                            github_upsert_json_file(
-                                file_path=file_path,
-                                new_data=merged,
-                                commit_message="Save match sessions from Streamlit",
-                                repo=repo,
-                                branch=branch,
-                                token=token,
-                            )
-                    
-                            # ✅ 캐시 초기화 (스코어보드가 바로 최신 읽게)
-                            try:
-                                _github_read_json.clear()
-                            except Exception:
-                                pass
-                    
-                            st.success(f"저장 완료! (GitHub: {file_path})")
-                    
-                        except Exception as e:
-                            st.error(f"저장 실패: {e}")
+                col_a, col_b = st.columns([3, 2])
+                with col_a:
+                    save_to_github_clicked = st.button("✅ 경기기록 저장", use_container_width=True)
+                with col_b:
+                    st.write("")
 
+                if save_to_github_clicked:
+                    try:
+                        # ✅ secrets 체크
+                        repo = str(st.secrets.get("GITHUB_REPO", "")).strip()
+                        branch = str(st.secrets.get("GITHUB_BRANCH", "main")).strip()
+                        token = st.secrets.get("GITHUB_TOKEN", "") or None
+                        file_path = str(st.secrets.get("GITHUB_FILE_PATH", SESSIONS_FILE)).strip().lstrip("/")
+
+                        if not repo or not token or not file_path:
+                            st.error("GitHub secrets 설정이 비어있어. (GITHUB_REPO / GITHUB_TOKEN / GITHUB_FILE_PATH 확인)")
+                            st.stop()
+
+                        # ✅ 최신 sessions 확보: (1) 로컬 파일 → (2) session_state로 덮기
+                        sessions_local = {}
+                        try:
+                            if os.path.exists(SESSIONS_FILE):
+                                with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
+                                    sessions_local = json.load(f)
+                        except Exception:
+                            sessions_local = {}
+
+                        if not isinstance(sessions_local, dict):
+                            sessions_local = {}
+
+                        sessions_state = st.session_state.get("sessions", {})
+                        if isinstance(sessions_state, dict):
+                            # state가 더 최신일 수 있으니 state 우선
+                            sessions_local.update(sessions_state)
+
+                        # ✅ 원격도 읽어서 병합 (빈 schedule로 덮어쓰기 방지)
+                        ok, sessions_remote = _github_read_json(repo, branch, file_path, token)
+                        if not isinstance(sessions_remote, dict):
+                            sessions_remote = {}
+
+                        def _merge_day(remote_day: dict, local_day: dict) -> dict:
+                            remote_day = remote_day if isinstance(remote_day, dict) else {}
+                            local_day = local_day if isinstance(local_day, dict) else {}
+
+                            out = dict(remote_day)
+                            out.update(local_day)
+
+                            # ✅ schedule 보호: 로컬 schedule이 비어있으면 원격 schedule 유지
+                            rsch = remote_day.get("schedule")
+                            lsch = local_day.get("schedule")
+                            if (not lsch) and rsch:
+                                out["schedule"] = rsch
+
+                            # ✅ groups_snapshot도 동일 보호
+                            if (not local_day.get("groups_snapshot")) and remote_day.get("groups_snapshot"):
+                                out["groups_snapshot"] = remote_day.get("groups_snapshot")
+
+                            return out
+
+                        merged = dict(sessions_remote)
+                        for d, lday in sessions_local.items():
+                            merged[d] = _merge_day(sessions_remote.get(d, {}), lday)
+
+                        github_upsert_json_file(
+                            file_path=file_path,
+                            new_data=merged,
+                            commit_message="Save match sessions from Streamlit",
+                            repo=repo,
+                            branch=branch,
+                            token=token,
+                        )
+
+                        # ✅ 캐시 초기화 (스코어보드가 바로 최신 읽게)
+                        try:
+                            _github_read_json.clear()
+                        except Exception:
+                            pass
+
+                        st.success(f"저장 완료! (GitHub: {file_path})")
+
+                    except Exception as e:
+                        st.error(f"저장 실패: {e}")
 
 
                 # =====================================================
+                # 1) 당일 선수/게임 편집 (관리자 전용) - 전체 경기 스코어 하단
+                #   - (A) 선수 이름 일괄 교체 (점수 유지)
+                #   - (A-2) 한 게임만 선수 변경 (점수 유지)
+                #   - (B) 게임 순서 변경 (점수도 같이 이동)
+                #   - 적용 메시지는 rerun 후에도 보이게 처리
+                # =====================================================
+                if (not IS_OBSERVER) and (sel_date != "전체"):
+                    _sched_now = day_data.get("schedule", []) or []
+                    if _sched_now:
+                        _flash_msg = st.session_state.pop("_flash_day_edit_msg", None)
+                        if _flash_msg:
+                            st.success(_flash_msg)
 
-            # =====================================================
-            # 👥 당일 선수 수정 (관리자 전용) - 전체 경기 스코어 하단
-            #   - 선택한 날짜의 schedule 안에서 특정 선수 이름을 일괄 교체
-            #   - 점수(results)는 그대로 유지
-            # =====================================================
-            if (not IS_OBSERVER) and (sel_date != "전체"):
-                _sched_now = day_data.get("schedule", []) or []
-                if _sched_now:
-                    col_swap, col_reorder = st.columns(2)
-                    # -----------------------------
-                    # (A) 당일 선수 이름 일괄 교체
-                    # -----------------------------
-                    with col_swap:
-                        with st.expander("👥 당일 선수 수정", expanded=False):
-                            # 오늘 대진표에 등장하는 선수 목록
-                            _names = set()
-                            for _gtype, _t1, _t2, _court in _sched_now:
-                                if isinstance(_t1, (list, tuple)):
-                                    _names.update([x for x in _t1 if x])
-                                if isinstance(_t2, (list, tuple)):
-                                    _names.update([x for x in _t2 if x])
-                            day_names = sorted(_names)
-            
-                            roster = st.session_state.get("roster", []) or []
-                            roster_names = sorted(
-                                {p.get("name") for p in roster if isinstance(p, dict) and p.get("name")}
-                            )
-            
-                            if not day_names:
-                                st.info("이 날짜 대진표(schedule)에 선수 정보가 없어.")
-                            else:
-                                old_name = st.selectbox(
-                                    "바꿀 선수(기존)",
-                                    day_names,
-                                    key=f"swap_old_{sel_date}",
-                                )
-            
-                                # 새 선수 후보: roster가 있으면 roster 우선, 없으면 day_names로
-                                new_options = roster_names if roster_names else day_names
-                                new_name = st.selectbox(
-                                    "변경할 선수(새)",
-                                    new_options,
-                                    key=f"swap_new_{sel_date}",
-                                )
-            
-                                c1, c2 = st.columns([2, 3])
-                                with c1:
-                                    apply_swap = st.button(
-                                        "✅ 변경 적용",
-                                        use_container_width=True,
-                                        key=f"swap_apply_{sel_date}",
+                        # 오늘 대진표에 등장하는 선수 목록
+                        _names = set()
+                        for _gtype, _t1, _t2, _court in _sched_now:
+                            if isinstance(_t1, (list, tuple)):
+                                _names.update([x for x in _t1 if x])
+                            if isinstance(_t2, (list, tuple)):
+                                _names.update([x for x in _t2 if x])
+                        day_names = sorted(_names)
+
+                        roster = st.session_state.get("roster", []) or []
+                        roster_names = sorted(
+                            {p.get("name") for p in roster if isinstance(p, dict) and p.get("name")}
+                        )
+
+                        col_swap, col_reorder = st.columns(2)
+
+                        # -----------------------------
+                        # (A) 선수 이름 일괄 교체 + (A-2) 한 게임만 선수 변경
+                        # -----------------------------
+                        with col_swap:
+                            with st.expander("👥 당일 선수 수정", expanded=False):
+                                if not day_names:
+                                    st.info("이 날짜 대진표(schedule)에 선수 정보가 없어.")
+                                else:
+                                    old_name = st.selectbox(
+                                        "바꿀 선수(기존)",
+                                        day_names,
+                                        key=f"swap_old_{sel_date}",
                                     )
-                                with c2:
-                                    st.caption("※ 적용하면 오늘 대진표에서 해당 이름이 전부 교체돼. 점수는 유지돼.")
-            
-                                if apply_swap:
-                                    if old_name == new_name:
-                                        st.warning("기존/새 이름이 같아. 다른 이름을 선택해줘.")
-                                    else:
-                                        def _rep_team(team):
-                                            if isinstance(team, (list, tuple)):
-                                                return type(team)([new_name if x == old_name else x for x in team])
-                                            return team
-            
-                                        new_schedule = []
-                                        for gtype, t1, t2, court in _sched_now:
-                                            new_schedule.append((gtype, _rep_team(t1), _rep_team(t2), court))
-            
-                                        day_data["schedule"] = new_schedule
-                                        sessions[sel_date] = day_data
-                                        st.session_state.sessions = sessions
-                                        save_sessions(sessions)
-            
-                                        st.success("적용 완료! (GitHub 저장 버튼을 쓰는 경우엔 아래 '✅ 경기기록 저장'도 눌러줘)")
-                                        if hasattr(st, "rerun"):
-                                            st.rerun()
-                                        elif hasattr(st, "experimental_rerun"):
-                                            st.experimental_rerun()
-            
-                    # -----------------------------
-                    # (B) 게임(경기) 순서만 변경
-                    #     - 선수/대진/코트는 그대로
-                    #     - 결과(results)도 함께 이동
-                    # -----------------------------
-                    with col_reorder:
-                        with st.expander("🔀 게임 순서 변경", expanded=False):
-                            n_games = len(_sched_now)
-            
-                            def _team_join(team):
-                                if isinstance(team, (list, tuple)):
-                                    return " / ".join([str(x) for x in team if str(x).strip() != ""])
-                                return str(team) if team is not None else ""
-            
-                            labels = []
-                            for i, (gtype, t1, t2, court) in enumerate(_sched_now, start=1):
-                                labels.append(f"{i}번 ({gtype}, 코트 {court})  {_team_join(t1)} vs {_team_join(t2)}")
-            
-                            if n_games <= 1:
-                                st.info("게임이 1개라서 순서를 바꿀 수 없어.")
-                            else:
-                                move_from = st.selectbox(
-                                    "이동할 게임",
-                                    list(range(1, n_games + 1)),
-                                    format_func=lambda i: labels[i - 1],
-                                    key=f"reorder_from_{sel_date}",
-                                )
-                                move_to = st.selectbox(
-                                    "옮길 위치",
-                                    list(range(1, n_games + 1)),
-                                    format_func=lambda i: labels[i - 1],
-                                    key=f"reorder_to_{sel_date}",
-                                )
-            
-                                apply_reorder = st.button(
-                                    "✅ 순서 변경 적용",
-                                    use_container_width=True,
-                                    key=f"reorder_apply_{sel_date}",
-                                )
-                                st.caption("※ 선수/대진/코트는 그대로 두고, 게임의 표시 순서만 바꿉니다. (점수도 해당 게임과 같이 이동)")
-            
-                                if apply_reorder:
-                                    if move_from == move_to:
-                                        st.info("같은 위치라서 변경할 게 없어.")
-                                    else:
-                                        order = list(range(n_games))
-                                        item = order.pop(move_from - 1)
-                                        order.insert(move_to - 1, item)
-            
-                                        # schedule 재정렬
-                                        new_schedule = [_sched_now[i] for i in order]
-            
-                                        # results도 같은 순서로 이동
-                                        old_results = day_data.get("results", {}) or {}
-                                        old_res_list = []
-                                        for i in range(n_games):
-                                            r = old_results.get(str(i + 1)) or old_results.get(i + 1) or {}
-                                            old_res_list.append(r)
-                                        new_res_list = [old_res_list[i] for i in order]
-                                        new_results = {str(i + 1): new_res_list[i] for i in range(n_games)}
-            
-                                        day_data["schedule"] = new_schedule
-                                        day_data["results"] = new_results
-                                        sessions[sel_date] = day_data
-                                        st.session_state.sessions = sessions
-                                        save_sessions(sessions)
-            
-                                        st.success("게임 순서 변경 완료!")
-                                        if hasattr(st, "rerun"):
-                                            st.rerun()
-                                        elif hasattr(st, "experimental_rerun"):
-                                            st.experimental_rerun()
 
-# 2. 오늘의 요약 리포트 (자동 생성)
+                                    # 새 선수 후보: roster가 있으면 roster 우선, 없으면 day_names로
+                                    new_options = roster_names if roster_names else day_names
+                                    new_name = st.selectbox(
+                                        "변경할 선수(새)",
+                                        new_options,
+                                        key=f"swap_new_{sel_date}",
+                                    )
+
+                                    c1, c2 = st.columns([2, 3])
+                                    with c1:
+                                        apply_swap = st.button(
+                                            "✅ 변경 적용",
+                                            use_container_width=True,
+                                            key=f"swap_apply_{sel_date}",
+                                        )
+                                    with c2:
+                                        st.caption("※ 적용하면 오늘 대진표에서 해당 이름이 전부 교체돼. 점수는 유지돼.")
+
+                                    if apply_swap:
+                                        if old_name == new_name:
+                                            st.warning("기존/새 이름이 같아. 다른 이름을 선택해줘.")
+                                        else:
+                                            def _rep_team(team):
+                                                if isinstance(team, (list, tuple)):
+                                                    return type(team)([new_name if x == old_name else x for x in team])
+                                                return team
+
+                                            new_schedule = []
+                                            for gtype, t1, t2, court in _sched_now:
+                                                new_schedule.append((gtype, _rep_team(t1), _rep_team(t2), court))
+
+                                            day_data["schedule"] = new_schedule
+                                            sessions[sel_date] = day_data
+                                            st.session_state.sessions = sessions
+                                            save_sessions(sessions)
+
+                                            st.session_state["_flash_day_edit_msg"] = (
+                                                f"✅ '{old_name}' → '{new_name}' 교체 적용 완료! "
+                                                f"(원격 저장 필요하면 위의 '✅ 경기기록 저장'도 눌러줘)"
+                                            )
+                                            safe_rerun()
+
+                                # -------------------------------------------------
+                                # (A-2) 한 게임만 선수 변경 (대진 전체 교체 말고 1게임만)
+                                #   - schedule의 특정 인덱스만 수정
+                                #   - 점수(results)는 그대로 유지
+                                # -------------------------------------------------
+                                st.markdown("---")
+                                st.markdown("**🎯 한 게임만 선수 변경**")
+
+                                n_games_local = len(_sched_now)
+
+                                def _team_join_one(team):
+                                    if isinstance(team, (list, tuple)):
+                                        return " / ".join([str(x) for x in team if str(x).strip() != ""])
+                                    return str(team) if team is not None else ""
+
+                                if n_games_local <= 0:
+                                    st.info("게임이 없어서 수정할 수 없어.")
+                                else:
+                                    _labels_game = []
+                                    for _i, (_gt, _t1, _t2, _ct) in enumerate(_sched_now, start=1):
+                                        _labels_game.append(f"{_i}번 ({_gt}, 코트 {_ct})  {_team_join_one(_t1)} vs {_team_join_one(_t2)}")
+
+                                    edit_game_no = st.selectbox(
+                                        "수정할 게임",
+                                        list(range(1, n_games_local + 1)),
+                                        format_func=lambda i: _labels_game[i - 1],
+                                        key=f"edit_game_sel_{sel_date}",
+                                    )
+
+                                    gtype_g, t1_g, t2_g, court_g = _sched_now[edit_game_no - 1]
+
+                                    # 후보 옵션: roster가 있으면 roster 우선 + (혹시 roster에 없는 기존 이름도 포함)
+                                    base_opts = list(roster_names) if roster_names else list(day_names)
+                                    cur_names = []
+                                    for _team in (t1_g, t2_g):
+                                        if isinstance(_team, (list, tuple)):
+                                            cur_names.extend([x for x in _team if x])
+                                        elif _team:
+                                            cur_names.append(_team)
+                                    options = sorted(set(base_opts) | set(cur_names))
+
+                                    def _idx(opts, val):
+                                        try:
+                                            return opts.index(val)
+                                        except Exception:
+                                            return 0
+
+                                    # 단식/복식 구분(안전)
+                                    is_singles = (gtype_g == "단식")
+                                    if (not isinstance(t1_g, (list, tuple))) or (not isinstance(t2_g, (list, tuple))):
+                                        is_singles = True
+                                    if isinstance(t1_g, (list, tuple)) and len(t1_g) == 1:
+                                        is_singles = True
+                                    if isinstance(t2_g, (list, tuple)) and len(t2_g) == 1:
+                                        is_singles = True
+
+                                    if is_singles:
+                                        p1 = t1_g[0] if isinstance(t1_g, (list, tuple)) and len(t1_g) > 0 else ""
+                                        p2 = t2_g[0] if isinstance(t2_g, (list, tuple)) and len(t2_g) > 0 else ""
+
+                                        cA, cB = st.columns(2)
+                                        with cA:
+                                            new_p1 = st.selectbox(
+                                                "팀1 선수",
+                                                options,
+                                                index=_idx(options, p1) if options else 0,
+                                                key=f"edit_g_{sel_date}_{edit_game_no}_p1",
+                                            )
+                                        with cB:
+                                            new_p2 = st.selectbox(
+                                                "팀2 선수",
+                                                options,
+                                                index=_idx(options, p2) if options else 0,
+                                                key=f"edit_g_{sel_date}_{edit_game_no}_p2",
+                                            )
+
+                                        new_t1 = (new_p1,)
+                                        new_t2 = (new_p2,)
+                                    else:
+                                        p11 = t1_g[0] if len(t1_g) > 0 else ""
+                                        p12 = t1_g[1] if len(t1_g) > 1 else ""
+                                        p21 = t2_g[0] if len(t2_g) > 0 else ""
+                                        p22 = t2_g[1] if len(t2_g) > 1 else ""
+
+                                        c1a, c1b = st.columns(2)
+                                        with c1a:
+                                            st.caption("팀1")
+                                            new_p11 = st.selectbox(
+                                                "팀1-1",
+                                                options,
+                                                index=_idx(options, p11) if options else 0,
+                                                key=f"edit_g_{sel_date}_{edit_game_no}_p11",
+                                            )
+                                            new_p12 = st.selectbox(
+                                                "팀1-2",
+                                                options,
+                                                index=_idx(options, p12) if options else 0,
+                                                key=f"edit_g_{sel_date}_{edit_game_no}_p12",
+                                            )
+                                        with c1b:
+                                            st.caption("팀2")
+                                            new_p21 = st.selectbox(
+                                                "팀2-1",
+                                                options,
+                                                index=_idx(options, p21) if options else 0,
+                                                key=f"edit_g_{sel_date}_{edit_game_no}_p21",
+                                            )
+                                            new_p22 = st.selectbox(
+                                                "팀2-2",
+                                                options,
+                                                index=_idx(options, p22) if options else 0,
+                                                key=f"edit_g_{sel_date}_{edit_game_no}_p22",
+                                            )
+
+                                        new_t1 = (new_p11, new_p12)
+                                        new_t2 = (new_p21, new_p22)
+
+                                    apply_one_game = st.button(
+                                        "✅ 이 게임만 변경 적용",
+                                        use_container_width=True,
+                                        key=f"edit_game_apply_{sel_date}",
+                                    )
+                                    st.caption("※ 선택한 1게임만 선수 구성을 바꿉니다. 점수는 그대로 유지됩니다.")
+
+                                    if apply_one_game:
+                                        chosen = [x for x in (list(new_t1) + list(new_t2)) if x]
+                                        if len(chosen) != len(set(chosen)):
+                                            st.warning("같은 선수가 한 게임에 중복되어 있어. 확인해줘.")
+                                        else:
+                                            # 원래 타입 유지(list/tuple)
+                                            def _as_type(orig, tpl):
+                                                if isinstance(orig, list):
+                                                    return list(tpl)
+                                                if isinstance(orig, tuple):
+                                                    return tuple(tpl)
+                                                return tpl
+
+                                            new_schedule = list(_sched_now)
+                                            new_schedule[edit_game_no - 1] = (
+                                                gtype_g,
+                                                _as_type(t1_g, new_t1),
+                                                _as_type(t2_g, new_t2),
+                                                court_g,
+                                            )
+
+                                            day_data["schedule"] = new_schedule
+                                            sessions[sel_date] = day_data
+                                            st.session_state.sessions = sessions
+                                            save_sessions(sessions)
+
+                                            st.session_state["_flash_day_edit_msg"] = f"✅ {edit_game_no}번 게임 선수 변경 완료!"
+                                            safe_rerun()
+
+                        # -----------------------------
+                        # (B) 게임(경기) 순서만 변경
+                        #     - 선수/대진/코트는 그대로
+                        #     - 결과(results)도 함께 이동
+                        # -----------------------------
+                        with col_reorder:
+                            with st.expander("🔀 게임 순서 변경", expanded=False):
+                                n_games = len(_sched_now)
+
+                                def _team_join(team):
+                                    if isinstance(team, (list, tuple)):
+                                        return " / ".join([str(x) for x in team if str(x).strip() != ""])
+                                    return str(team) if team is not None else ""
+
+                                labels = []
+                                for i, (gtype, t1, t2, court) in enumerate(_sched_now, start=1):
+                                    labels.append(f"{i}번 ({gtype}, 코트 {court})  {_team_join(t1)} vs {_team_join(t2)}")
+
+                                if n_games <= 1:
+                                    st.info("게임이 1개라서 순서를 바꿀 수 없어.")
+                                else:
+                                    move_from = st.selectbox(
+                                        "이동할 게임",
+                                        list(range(1, n_games + 1)),
+                                        format_func=lambda i: labels[i - 1],
+                                        key=f"reorder_from_{sel_date}",
+                                    )
+                                    move_to = st.selectbox(
+                                        "옮길 위치",
+                                        list(range(1, n_games + 1)),
+                                        format_func=lambda i: labels[i - 1],
+                                        key=f"reorder_to_{sel_date}",
+                                    )
+
+                                    apply_reorder = st.button(
+                                        "✅ 순서 변경 적용",
+                                        use_container_width=True,
+                                        key=f"reorder_apply_{sel_date}",
+                                    )
+                                    st.caption("※ 선수/대진/코트는 그대로 두고, 게임의 표시 순서만 바꿉니다. (점수도 해당 게임과 같이 이동)")
+
+                                    if apply_reorder:
+                                        if move_from == move_to:
+                                            st.info("같은 위치라서 변경할 게 없어.")
+                                        else:
+                                            order = list(range(n_games))
+                                            item = order.pop(move_from - 1)
+                                            order.insert(move_to - 1, item)
+
+                                            # schedule 재정렬
+                                            new_schedule = [_sched_now[i] for i in order]
+
+                                            # results도 같은 순서로 이동
+                                            old_results = day_data.get("results", {}) or {}
+                                            old_res_list = []
+                                            for i in range(n_games):
+                                                r = old_results.get(str(i + 1)) or old_results.get(i + 1) or {}
+                                                old_res_list.append(r)
+                                            new_res_list = [old_res_list[i] for i in order]
+                                            new_results = {str(i + 1): new_res_list[i] for i in range(n_games)}
+
+                                            day_data["schedule"] = new_schedule
+                                            day_data["results"] = new_results
+                                            sessions[sel_date] = day_data
+                                            st.session_state.sessions = sessions
+                                            save_sessions(sessions)
+
+                                            st.session_state["_flash_day_edit_msg"] = "✅ 게임 순서 변경 완료!"
+                                            safe_rerun()
+
+
+                # =====================================================
+            # 2. 오늘의 요약 리포트 (자동 생성)
             # =====================================================
-            try:
-                report_lines = build_daily_report(sel_date, day_data)
-                
-                st.markdown("---")
-                
-                if not report_lines:
-                    st.info("점수가 입력된 경기가 아직 없어서 요약 리포트를 만들 수 없습니다.")
-                else:
-                    html_lines = "".join(f"<li>{line}</li>" for line in report_lines)
-                    st.markdown(
-                        f"""
-                        <div style="
-                            margin-top:0.3rem;
-                            padding:0.9rem 1.1rem;
-                            border-radius:12px;
-                            background:#eef2ff;
-                            border:1px solid #c7d2fe;
-                            font-size:0.9rem;
-                            line-height:1.5;
-                        ">
-                            <div style="font-weight:700;font-size:0.98rem;margin-bottom:0.4rem;">
-                                📋 {sel_date} 요약 리포트
-                            </div>
-                            <ul style="padding-left:1.1rem;margin:0;">
-                                {html_lines}
-                            </ul>
+            report_lines = build_daily_report(sel_date, day_data)
+
+            st.markdown("---")
+
+            if not report_lines:
+                st.info("점수가 입력된 경기가 아직 없어서 요약 리포트를 만들 수 없습니다.")
+            else:
+                html_lines = "".join(f"<li>{line}</li>" for line in report_lines)
+                st.markdown(
+                    f"""
+                    <div style="
+                        margin-top:0.3rem;
+                        padding:0.9rem 1.1rem;
+                        border-radius:12px;
+                        background:#eef2ff;
+                        border:1px solid #c7d2fe;
+                        font-size:0.9rem;
+                        line-height:1.5;
+                    ">
+                        <div style="font-weight:700;font-size:0.98rem;margin-bottom:0.4rem;">
+                            📋 {sel_date} 요약 리포트
                         </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-                
-                # -----------------------------
-            except Exception as e:
-                st.error(f"요약 리포트 생성 중 오류: {e}")
-                report_lines = []
+                        <ul style="padding-left:1.1rem;margin:0;">
+                            {html_lines}
+                        </ul>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            # -----------------------------
             if not IS_OBSERVER:
                 # 4) 오늘 경기 전체 삭제
                 # -----------------------------
@@ -7640,6 +7053,607 @@ with tab3:
                     st.markdown("<br>", unsafe_allow_html=True)
 
                 # =====================================================
+            # 1. 현재 스코어 요약 (표) - 최신 results 기준
+            # =====================================================
+            with summary_container:
+                st.subheader("1. 현재 스코어 요약 (표)")
+
+                if not schedule:
+                    st.info("이 날짜에는 저장된 대진이 없습니다.")
+                else:
+                    summary_view_mode = st.radio(
+                        "요약 보기 방식",
+                        ["대진별 보기", "개인별 보기"],
+                        horizontal=True,
+                        key="tab3_summary_view_mode",
+                    )
+
+                    games_A_sum, games_B_sum, games_other_sum = [], [], []
+                    day_groups_snapshot = day_data.get("groups_snapshot")
+
+                    per_player_all = defaultdict(list)
+                    per_player_A = defaultdict(list)
+                    per_player_B = defaultdict(list)
+                    per_player_other = defaultdict(list)
+
+                    for idx, (gtype, t1, t2, court) in enumerate(schedule, start=1):
+                        res = results.get(str(idx)) or results.get(idx) or {}
+                        s1, s2 = res.get("t1"), res.get("t2")
+
+                        row = {
+                            "게임": idx,
+                            "코트": court,
+                            "타입": gtype,
+                            "t1": t1,
+                            "t2": t2,
+                            "t1_score": s1,
+                            "t2_score": s2,
+                        }
+
+                        all_players = t1 + t2
+                        grp_flag = classify_game_group(
+                            all_players,
+                            roster_by_name,
+                            day_groups_snapshot,
+                        )
+
+                        if grp_flag == "A":
+                            games_A_sum.append(row)
+                        elif grp_flag == "B":
+                            games_B_sum.append(row)
+                        else:
+                            games_other_sum.append(row)
+
+                        if s1 is None or s2 is None:
+                            score_t1 = ""
+                            score_t2 = ""
+                        else:
+                            score_t1 = f"{s1} : {s2}"
+                            score_t2 = f"{s2} : {s1}"
+
+                        for p in t1:
+                            per_player_all[p].append(score_t1)
+                        for p in t2:
+                            per_player_all[p].append(score_t2)
+
+                        target_dict = per_player_other
+                        if grp_flag == "A":
+                            target_dict = per_player_A
+                        elif grp_flag == "B":
+                            target_dict = per_player_B
+
+                        for p in t1:
+                            target_dict[p].append(score_t1)
+                        for p in t2:
+                            target_dict[p].append(score_t2)
+
+                    if summary_view_mode == "대진별 보기":
+
+
+                        # =========================================================
+                        # ✅ [대진표 캡처 + 텍스트 복사용] 준비 (24칸 들여쓰기)
+                        #   - 대진별 보기에서만 동작
+                        # =========================================================
+
+                        def _team_join(x):
+                            if isinstance(x, (list, tuple)):
+                                return ",".join([str(v).strip() for v in x if str(v).strip()])
+                            s = re.sub(r"<[^>]*>", "", str(x)).strip()
+                            s = re.sub(r"\s+", " ", s).strip()
+                            parts = [p.strip() for p in s.split(" ") if p.strip()]
+                            return ",".join(parts)
+
+                        def build_fixture_text_by_round(schedule_list):
+                            """
+                            schedule: [(gtype, t1, t2, court), ...]
+                            출력 포맷(예):
+                              1게임1코트 A,B vs C,D
+                              1게임2코트 E,F vs G,H
+                              쉬는사람: I,J
+
+                              2게임1코트 ...
+                              2게임2코트 ...
+                              쉬는사람: ...
+                            """
+                            if not schedule_list:
+                                return ""
+
+                            # 코트 개수 추정(안전: 유니크 코트 수)
+                            courts = []
+                            for item in schedule_list:
+                                try:
+                                    c = item[3]
+                                    courts.append(int(c))
+                                except Exception:
+                                    continue
+
+                            court_count = len(sorted(set(courts))) if courts else 1
+                            if court_count <= 0:
+                                court_count = 1
+
+                            def _team_list(x):
+                                """팀(선수) 이름을 리스트로 정규화"""
+                                if isinstance(x, (list, tuple)):
+                                    return [str(v).strip() for v in x if str(v).strip()]
+                                s = re.sub(r"<[^>]*>", "", str(x)).strip()
+                                s = re.sub(r"\s+", " ", s).strip()
+                                return [p.strip() for p in s.split(" ") if p.strip()]
+
+                            # ✅ 전체 참가자(대진표 전체에서 등장한 순서대로)
+                            all_names = []
+                            seen = set()
+                            for _, t1, t2, _ in schedule_list:
+                                for nm in _team_list(t1) + _team_list(t2):
+                                    if nm and nm not in seen:
+                                        seen.add(nm)
+                                        all_names.append(nm)
+
+                            lines = []
+                            total_rounds = (len(schedule_list) + court_count - 1) // court_count
+
+                            for round_no in range(1, total_rounds + 1):
+                                start = (round_no - 1) * court_count
+                                end = min(round_no * court_count, len(schedule_list))
+                                chunk = schedule_list[start:end]
+                                if not chunk:
+                                    continue
+
+                                playing = set()
+
+                                for i, (gtype, t1, t2, court) in enumerate(chunk):
+                                    try:
+                                        court_no = int(court)
+                                    except Exception:
+                                        court_no = i + 1
+
+                                    for nm in _team_list(t1) + _team_list(t2):
+                                        if nm:
+                                            playing.add(nm)
+
+                                    lines.append(
+                                        f"{round_no}게임{court_no}코트 {_team_join(t1)} vs {_team_join(t2)}"
+                                    )
+
+                                bench = [nm for nm in all_names if nm not in playing]
+                                lines.append("쉬는사람: " + (",".join(bench) if bench else "없음"))
+                                lines.append("")  # ✅ 한 칸 띄우고 다음 게임
+
+                            return "\n".join(lines).strip()
+
+                        fixture_text = build_fixture_text_by_round(schedule)
+
+                        safe_date_key = re.sub(r"[^0-9a-zA-Z_]+", "_", str(sel_date))
+                        capture_id = f"tab3_fixture_capture_{safe_date_key}"
+
+                        # ✅ 캡처 범위 마커 (start/end)
+                        st.markdown(f'<div id="{capture_id}__start"></div>', unsafe_allow_html=True)
+
+                        if view_mode_scores == "조별 보기 (A/B조)":
+                            if games_A_sum:
+                                st.markdown("### A조 경기 요약")
+                                render_score_summary_table(games_A_sum, roster_by_name)
+                            if games_B_sum:
+                                st.markdown("### B조 경기 요약")
+                                render_score_summary_table(games_B_sum, roster_by_name)
+                            if games_other_sum:
+                                st.markdown("### 조가 섞인 경기 / 기타")
+                                render_score_summary_table(games_other_sum, roster_by_name)
+                        else:
+                            all_games_sum = games_A_sum + games_B_sum + games_other_sum
+                            render_score_summary_table(all_games_sum, roster_by_name)
+
+                        st.markdown(f'<div id="{capture_id}__end"></div>', unsafe_allow_html=True)
+
+
+                        # =========================================================
+                        # ✅ [표 아래] JPEG 저장 + 텍스트 클립보드 복사 버튼
+                        #   - start/end 마커 사이 DOM을 복제해서 JPEG 캡처
+                        # =========================================================
+                        components.html(
+                            f"""
+                            <div style="display:flex; gap:12px; margin-top:14px; align-items:center;">
+                              <button id="{capture_id}__save"
+                                style="flex:1; padding:10px 12px; border-radius:10px; border:1px solid rgba(0,0,0,0.15);
+                                       background:white; cursor:pointer; font-weight:700;">
+                                대진표 이미지 저장 (JPEG)
+                              </button>
+
+                              <button id="{capture_id}__copy"
+                                style="flex:1; padding:10px 12px; border-radius:10px; border:1px solid rgba(0,0,0,0.15);
+                                       background:white; cursor:pointer; font-weight:700;">
+                                대진표 텍스트 저장 (클립보드)
+                              </button>
+
+                              <span id="{capture_id}__msg" style="font-size:12px; opacity:0.7;"></span>
+                            </div>
+
+                            <script>
+                            (function() {{
+                              const capId = {json.dumps(capture_id)};
+                              const fileName = "대진표_" + {json.dumps(str(sel_date))}.replace(/[^0-9a-zA-Z_\\-]+/g, "_") + ".jpg";
+                              const text = {json.dumps(fixture_text)};
+
+                              const msgEl  = document.getElementById(capId + "__msg");
+                              const btnSave = document.getElementById(capId + "__save");
+                              const btnCopy = document.getElementById(capId + "__copy");
+
+                              function setMsg(m) {{
+                                if (msgEl) msgEl.textContent = m;
+                              }}
+
+                              function ensureHtml2Canvas() {{
+                                return new Promise((resolve, reject) => {{
+                                  const p = window.parent;
+                                  if (p && p.html2canvas) {{
+                                    resolve(p.html2canvas);
+                                    return;
+                                  }}
+                                  const ps = p.document.createElement("script");
+                                  ps.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+                                  ps.onload = () => resolve(p.html2canvas);
+                                  ps.onerror = reject;
+                                  p.document.head.appendChild(ps);
+                                }});
+                              }}
+
+                              async function copyTextFallback(t) {{
+                                const pdoc = window.parent.document;
+                                const ta = pdoc.createElement("textarea");
+                                ta.value = t;
+                                ta.style.position = "fixed";
+                                ta.style.left = "-9999px";
+                                pdoc.body.appendChild(ta);
+                                ta.focus();
+                                ta.select();
+                                try {{
+                                  pdoc.execCommand("copy");
+                                }} catch(e) {{}}
+                                ta.remove();
+                              }}
+
+                              if (btnSave) {{
+                                btnSave.onclick = async function() {{
+                                  try {{
+                                    setMsg("이미지 생성중…");
+                                    const pdoc = window.parent.document;
+
+                                    const start = pdoc.getElementById(capId + "__start");
+                                    const end   = pdoc.getElementById(capId + "__end");
+                                    if (!start || !end) {{
+                                      setMsg("캡처 마커를 찾지 못했어.");
+                                      return;
+                                    }}
+
+                                    const startTop = start.closest('div[data-testid="stElementContainer"]')
+                                                  || start.closest('div.element-container')
+                                                  || start.parentElement;
+
+                                    const endTop   = end.closest('div[data-testid="stElementContainer"]')
+                                                  || end.closest('div.element-container')
+                                                  || end.parentElement;
+
+                                    let common = startTop ? startTop.parentElement : null;
+                                    while (common && endTop && !common.contains(endTop)) {{
+                                      common = common.parentElement;
+                                    }}
+                                    if (!common) {{
+                                      setMsg("캡처 범위(공통부모) 찾기 실패");
+                                      return;
+                                    }}
+
+                                    const kids = Array.from(common.children);
+                                    const si = kids.indexOf(startTop);
+                                    const ei = kids.indexOf(endTop);
+
+                                    if (si < 0 || ei < 0 || ei <= si) {{
+                                      setMsg("캡처 범위 인덱스 오류");
+                                      return;
+                                    }}
+
+                                    const wrapper = pdoc.createElement("div");
+                                    wrapper.style.position = "fixed";
+                                    wrapper.style.left = "-100000px";
+                                    wrapper.style.top = "0";
+                                    wrapper.style.background = "#ffffff";
+                                    wrapper.style.width = (common.clientWidth || 1200) + "px";
+                                    wrapper.style.padding = "0";
+                                    wrapper.style.margin = "0";
+
+                                    for (let i = si + 1; i < ei; i++) {{
+                                      wrapper.appendChild(kids[i].cloneNode(true));
+                                    }}
+
+                                    pdoc.body.appendChild(wrapper);
+
+                                    const h2c = await ensureHtml2Canvas();
+                                    const canvas = await h2c(wrapper, {{
+                                      backgroundColor: "#ffffff",
+                                      scale: 2,
+                                      useCORS: true
+                                    }});
+
+                                    wrapper.remove();
+
+                                    const url = canvas.toDataURL("image/jpeg", 0.95);
+                                    const a = pdoc.createElement("a");
+                                    a.href = url;
+                                    a.download = fileName;
+                                    pdoc.body.appendChild(a);
+                                    a.click();
+                                    a.remove();
+
+                                    setMsg("JPEG 저장 완료!");
+                                  }} catch (e) {{
+                                    console.log(e);
+                                    setMsg("저장 실패(콘솔 확인)");
+                                  }}
+                                }};
+                              }}
+
+                              if (btnCopy) {{
+                                btnCopy.onclick = async function() {{
+                                  try {{
+                                    await window.parent.navigator.clipboard.writeText(text);
+                                    setMsg("클립보드 복사 완료!");
+                                  }} catch(e) {{
+                                    await copyTextFallback(text);
+                                    setMsg("클립보드 복사 완료!");
+                                  }}
+                                }};
+                              }}
+                            }})();
+                            </script>
+                            """,
+                            height=90,
+                        )
+
+
+                    else:
+                        # =========================================================
+                        # ✅ [개인별 보기] 캡처 마커 + 이미지 저장 버튼(only)
+                        # =========================================================
+
+                        safe_date_key_p = re.sub(r"[^0-9a-zA-Z_]+", "_", str(sel_date))
+                        capture_id_p = f"tab3_personal_capture_{safe_date_key_p}"
+
+                        # ✅ 캡처 범위 시작 마커
+                        st.markdown(f'<div id="{capture_id_p}__start"></div>', unsafe_allow_html=True)
+
+                        def render_player_score_table(title, per_dict):
+                            if not per_dict:
+                                return
+                            st.markdown(f"### {title}")
+
+                            players_sorted = sorted(per_dict.keys())
+                            rows = []
+                            for no, name in enumerate(players_sorted, start=1):
+                                games_list = per_dict[name]
+                                row = {
+                                    "번호": no,
+                                    "이름": name,
+                                    "1게임": games_list[0] if len(games_list) >= 1 else "",
+                                    "2게임": games_list[1] if len(games_list) >= 2 else "",
+                                    "3게임": games_list[2] if len(games_list) >= 3 else "",
+                                    "4게임": games_list[3] if len(games_list) >= 4 else "",
+                                }
+                                rows.append(row)
+
+                            df_players = pd.DataFrame(rows)
+                            df_players = df_players.set_index("번호")
+                            df_players.index.name = ""
+
+                            df_players.index.name = None
+                            df_players.columns.name = None
+
+                            def calc_wdl(values):
+                                w = d = l = 0
+                                for v in values:
+                                    if not isinstance(v, str):
+                                        continue
+                                    s = v.replace(" ", "")
+                                    if ":" not in s:
+                                        continue
+                                    left, right = s.split(":", 1)
+                                    try:
+                                        a = int(left)
+                                        b = int(right)
+                                    except ValueError:
+                                        continue
+
+                                    if a > b:
+                                        w += 1
+                                    elif a == b:
+                                        d += 1
+                                    else:
+                                        l += 1
+                                return pd.Series([w, d, l], index=["승", "무", "패"])
+
+                            game_cols = ["1게임", "2게임", "3게임", "4게임"]
+                            df_players[["승", "무", "패"]] = df_players[game_cols].apply(calc_wdl, axis=1)
+
+                            df_players = df_players[["이름", "승", "무", "패"] + game_cols]
+
+                            def highlight_win_loss(val):
+                                if not isinstance(val, str):
+                                    return ""
+                                s = val.replace(" ", "")
+                                if ":" not in s:
+                                    return ""
+                                left, right = s.split(":", 1)
+                                try:
+                                    a = int(left)
+                                    b = int(right)
+                                except ValueError:
+                                    return ""
+
+                                if a > b:
+                                    return "background-color: #fef9c3;"  # 노랑
+                                elif a < b:
+                                    return "background-color: #e5e7eb;"  # 회색
+                                else:
+                                    return ""
+
+                            sty_players = colorize_df_names(df_players, roster_by_name, ["이름"])
+                            sty_players = sty_players.applymap(highlight_win_loss, subset=game_cols)
+                            smart_table(sty_players)
+
+                        # =========================================================
+                        # ✅ 개인별 테이블 출력(기존 로직)
+                        # =========================================================
+                        if view_mode_scores == "조별 보기 (A/B조)":
+                            has_any = False
+                            if per_player_A:
+                                render_player_score_table("A조 개인별 스코어", per_player_A)
+                                has_any = True
+                            if per_player_B:
+                                render_player_score_table("B조 개인별 스코어", per_player_B)
+                                has_any = True
+                            if per_player_other:
+                                render_player_score_table("조가 섞인 경기 / 기타 개인별 스코어", per_player_other)
+                                has_any = True
+                            if not has_any:
+                                st.info("개인별로 표시할 스코어가 없습니다.")
+                        else:
+                            if not per_player_all:
+                                st.info("개인별로 표시할 스코어가 없습니다.")
+                            else:
+                                render_player_score_table("전체 개인별 스코어", per_player_all)
+
+                        # ✅ 캡처 범위 끝 마커
+                        st.markdown(f'<div id="{capture_id_p}__end"></div>', unsafe_allow_html=True)
+
+                        # =========================================================
+                        # ✅ [개인별 보기] 이미지 저장 버튼만 (JPEG)
+                        #   - start/end 사이 DOM을 복제해서 캡처
+                        # =========================================================
+                        components.html(
+                            f"""
+                            <div style="display:flex; gap:12px; margin-top:14px; align-items:center;">
+                              <button id="{capture_id_p}__save"
+                                style="flex:1; padding:10px 12px; border-radius:10px; border:1px solid rgba(0,0,0,0.15);
+                                       background:white; cursor:pointer; font-weight:700;">
+                                개인별 표 이미지 저장 (JPEG)
+                              </button>
+                              <span id="{capture_id_p}__msg" style="font-size:12px; opacity:0.7;"></span>
+                            </div>
+
+                            <script>
+                            (function() {{
+                              const capId = {json.dumps(capture_id_p)};
+                              const fileName = "개인별표_" + {json.dumps(str(sel_date))}.replace(/[^0-9a-zA-Z_\\-]+/g, "_") + ".jpg";
+
+                              const msgEl  = document.getElementById(capId + "__msg");
+                              const btnSave = document.getElementById(capId + "__save");
+
+                              function setMsg(m) {{
+                                if (msgEl) msgEl.textContent = m;
+                              }}
+
+                              function ensureHtml2Canvas() {{
+                                return new Promise((resolve, reject) => {{
+                                  const p = window.parent;
+                                  if (p && p.html2canvas) {{
+                                    resolve(p.html2canvas);
+                                    return;
+                                  }}
+                                  const ps = p.document.createElement("script");
+                                  ps.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+                                  ps.onload = () => resolve(p.html2canvas);
+                                  ps.onerror = reject;
+                                  p.document.head.appendChild(ps);
+                                }});
+                              }}
+
+                              if (btnSave) {{
+                                btnSave.onclick = async function() {{
+                                  try {{
+                                    setMsg("이미지 생성중…");
+                                    const pdoc = window.parent.document;
+
+                                    const start = pdoc.getElementById(capId + "__start");
+                                    const end   = pdoc.getElementById(capId + "__end");
+                                    if (!start || !end) {{
+                                      setMsg("캡처 마커를 찾지 못했어.");
+                                      return;
+                                    }}
+
+                                    const startTop = start.closest('div[data-testid="stElementContainer"]')
+                                                  || start.closest('div.element-container')
+                                                  || start.parentElement;
+
+                                    const endTop   = end.closest('div[data-testid="stElementContainer"]')
+                                                  || end.closest('div.element-container')
+                                                  || end.parentElement;
+
+                                    let common = startTop ? startTop.parentElement : null;
+                                    while (common && endTop && !common.contains(endTop)) {{
+                                      common = common.parentElement;
+                                    }}
+                                    if (!common) {{
+                                      setMsg("캡처 범위(공통부모) 찾기 실패");
+                                      return;
+                                    }}
+
+                                    const kids = Array.from(common.children);
+                                    const si = kids.indexOf(startTop);
+                                    const ei = kids.indexOf(endTop);
+
+                                    if (si < 0 || ei < 0 || ei <= si) {{
+                                      setMsg("캡처 범위 인덱스 오류");
+                                      return;
+                                    }}
+
+                                    const wrapper = pdoc.createElement("div");
+                                    wrapper.style.position = "fixed";
+                                    wrapper.style.left = "-100000px";
+                                    wrapper.style.top = "0";
+                                    wrapper.style.background = "#ffffff";
+                                    wrapper.style.width = (common.clientWidth || 1200) + "px";
+                                    wrapper.style.padding = "0";
+                                    wrapper.style.margin = "0";
+
+                                    for (let i = si + 1; i < ei; i++) {{
+                                      wrapper.appendChild(kids[i].cloneNode(true));
+                                    }}
+
+                                    pdoc.body.appendChild(wrapper);
+
+                                    const h2c = await ensureHtml2Canvas();
+                                    const canvas = await h2c(wrapper, {{
+                                      backgroundColor: "#ffffff",
+                                      scale: 2,
+                                      useCORS: true
+                                    }});
+
+                                    wrapper.remove();
+
+                                    const url = canvas.toDataURL("image/jpeg", 0.95);
+                                    const a = pdoc.createElement("a");
+                                    a.href = url;
+                                    a.download = fileName;
+                                    pdoc.body.appendChild(a);
+                                    a.click();
+                                    a.remove();
+
+                                    setMsg("JPEG 저장 완료!");
+                                  }} catch (e) {{
+                                    console.log(e);
+                                    setMsg("저장 실패(콘솔 확인)");
+                                  }}
+                                }};
+                              }}
+                            }})();
+                            </script>
+                            """,
+                            height=80,
+                        )
+
+
+        else:
+            st.info("이 날짜에는 저장된 대진이 없습니다.")
+
+
+# =========================================================
 # 4) 개인별 통계
 # =========================================================
 with tab4:
