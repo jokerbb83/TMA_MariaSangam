@@ -40,16 +40,6 @@
     "mbti": "ENTP"
   },
   {
-    "name": "김정은",
-    "age_group": "비밀",
-    "gender": "여",
-    "hand": "오른손",
-    "racket": "모름",
-    "group": "B조",
-    "ntrp": null,
-    "mbti": "모름"
-  },
-  {
     "name": "김주현",
     "age_group": "30대",
     "gender": "여",
@@ -190,16 +180,6 @@
     "mbti": "ENFJ"
   },
   {
-    "name": "이진혁",
-    "age_group": "30대",
-    "gender": "남",
-    "hand": "오른손",
-    "racket": "헤드",
-    "group": "A조",
-    "ntrp": 2.0,
-    "mbti": "ISTP"
-  },
-  {
     "name": "이학수",
     "age_group": "40대",
     "gender": "남",
@@ -218,16 +198,6 @@
     "group": "B조",
     "ntrp": 2.5,
     "mbti": "ESFJ"
-  },
-  {
-    "name": "전태영",
-    "age_group": "비밀",
-    "gender": "남",
-    "hand": "오른손",
-    "racket": "모름",
-    "group": "B조",
-    "ntrp": null,
-    "mbti": "모름"
   },
   {
     "name": "정동민",
@@ -258,16 +228,6 @@
     "group": "A조",
     "ntrp": null,
     "mbti": "모름"
-  },
-  {
-    "name": "차주현",
-    "age_group": "30대",
-    "gender": "여",
-    "hand": "오른손",
-    "racket": "요넥스",
-    "group": "A조",
-    "ntrp": 2.5,
-    "mbti": "INFJ"
   },
   {
     "name": "차혜주",
