@@ -6641,6 +6641,40 @@ with tab3:
         # ✅ PC에서만 스코어 입력 줄바꿈 방지 CSS
         # -----------------------------
         if not mobile_mode:
+            # =========================================================
+            # 2. 날짜별 요약 리포트 (선택 날짜 기준)
+            #   - 옵저버/관리자 모두 '경기 기록 / 통계' 탭 하단에 표시
+            # =========================================================
+            try:
+                report_lines = build_daily_report(sel_date, day_data)
+                if report_lines:
+                    html_lines = ''.join([f'<li>{line}</li>' for line in report_lines])
+                    st.markdown(
+                        f"""
+                        <div style="
+                            margin:0.8rem 0 0.9rem 0;
+                            padding:0.9rem 1.0rem;
+                            border-radius:12px;
+                            background:#eef2ff;
+                            border:1px solid #c7d2fe;
+                            font-size:0.9rem;
+                            line-height:1.5;
+                        ">
+                            <div style="font-weight:700;font-size:0.98rem;margin-bottom:0.4rem;">
+                                📋 {sel_date} 요약 리포트
+                            </div>
+                            <ul style="padding-left:1.1rem;margin:0;">
+                                {html_lines}
+                            </ul>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    pass
+            except Exception as e:
+                st.error(f"요약 리포트 생성 중 오류: {e}")
+
             st.markdown("""
             <style>
             /* ✅ PC 라디오: 너무 빡센 'nowrap' 제거하고 간격 줄이기 */
