@@ -308,5 +308,15 @@
     "group": "B조",
     "ntrp": 2.0,
     "mbti": "ESTP"
+  },
+  {
+    "name": "채문현",
+    "gender": "남",
+    "hand": "오른손",
+    "age_group": "비밀",
+    "racket": "모름",
+    "group": "B조",
+    "ntrp": null,
+    "mbti": "모름"
   }
 ]
