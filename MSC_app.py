@@ -7354,7 +7354,35 @@ with tab3:
 
 
                 # =====================================================
+                # =====================================================
+                # 1) 당일 선수/게임 편집 (관리자 전용) - 전체 경기 스코어 하단
+                #   - (A) 선수 이름 일괄 교체 (점수 유지)
+                #   - (A-2) 한 게임만 선수 변경 (점수 유지)
+                #   - (B) 게임 순서 변경 (점수도 같이 이동)
+                #   - 적용 메시지는 rerun 후에도 보이게 처리
+                # =====================================================
+                if (not IS_OBSERVER) and (sel_date != "전체"):
+                    _sched_now = day_data.get("schedule", []) or []
+                    if _sched_now:
+                        _flash_msg = st.session_state.pop("_flash_day_edit_msg", None)
+                        if _flash_msg:
+                            st.success(_flash_msg)
 
+                        # 오늘 대진표에 등장하는 선수 목록
+                        _names = set()
+                        for _gtype, _t1, _t2, _court in _sched_now:
+                            if isinstance(_t1, (list, tuple)):
+                                _names.update([x for x in _t1 if x])
+                            if isinstance(_t2, (list, tuple)):
+                                _names.update([x for x in _t2 if x])
+                        day_names = sorted(_names)
+
+                        roster = st.session_state.get("roster", []) or []
+                        roster_names = sorted(
+                            {p.get("name") for p in roster if isinstance(p, dict) and p.get("name")}
+                        )
+
+                        col_swap, col_reorder = st.columns(2)
                         # -----------------------------
                         # (A) 선수 이름 일괄 교체 + (A-2) 한 게임만 선수 변경
                         # -----------------------------
