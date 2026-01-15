@@ -7447,14 +7447,24 @@ with tab3:
                                                 new_schedule.append((gtype, _rep_team(t1), _rep_team(t2), court))
 
                                             day_data["schedule"] = new_schedule
+                                            day_data["results"] = new_results
                                             sessions[sel_date] = day_data
                                             st.session_state.sessions = sessions
                                             save_sessions(sessions)
-
-                                            st.session_state["_flash_day_edit_msg"] = (
-                                                f"✅ '{old_name}' → '{new_name}' 교체 적용 완료! "
-                                                f"(원격 저장 필요하면 위의 '✅ 경기기록 저장'도 눌러줘)"
-                                            )
+    
+                                            # ✅ 중요: 순서가 바뀌면 기존 점수 위젯 key의 session_state가 남아서
+                                            # 화면 점수가 안 따라올 수 있음 → 해당 날짜 점수/사이드 key 리셋
+                                            for i in range(1, n_games + 1):
+                                                for k in [
+                                                    f"{sel_date}_s1_{i}",
+                                                    f"{sel_date}_s2_{i}",
+                                                    f"{sel_date}_side_radio_{i}_t1",
+                                                    f"{sel_date}_side_radio_{i}_t2",
+                                                ]:
+                                                    if k in st.session_state:
+                                                        del st.session_state[k]
+    
+                                            st.session_state["_flash_day_edit_msg"] = "✅ 게임 순서 변경 완료! (점수도 함께 이동됨)"
                                             safe_rerun()
 
                                 # -------------------------------------------------
