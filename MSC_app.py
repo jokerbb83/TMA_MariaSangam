@@ -2317,47 +2317,57 @@ def update_player_record(rec, result):
 
 
 def render_score_summary_table(games, roster_by_name):
-    """게임 리스트로 스코어 요약 표 렌더링
-
-    ⚠️ 최근 일부 환경에서 HTML 테이블이 안 보이는 현상이 있어서(스타일/브라우저 이슈),
-    Streamlit dataframe 기반으로 안정적으로 출력하도록 변경.
-    - 모바일: smart_table_hybrid가 정적 HTML로 변환해 보여줌
-    """
+    """게임 리스트로 HTML 요약 테이블 렌더링"""
     if not games:
         return
+    games_sorted = sorted(games, key=lambda x: x["게임"])
 
-    games_sorted = sorted(games, key=lambda x: x.get("게임", 0))
-    rows = []
+    html = ["<table style='border-collapse:collapse;width:100%;'>"]
+    header_cols = ["게임", "코트", "타입", "팀1", "팀1 점수", "팀2 점수", "팀2"]
+    html.append("<thead><tr>")
+    for col in header_cols:
+        html.append(
+            f"<th style='border:1px solid #ddd;padding:4px;text-align:center;background-color:#f5f5f5;color:#111111;'>{col}</th>"
+        )
+    html.append("</tr></thead><tbody>")
+
     for row in games_sorted:
-        idx = row.get("게임", "")
-        court = row.get("코트", "")
-        gtype = row.get("타입", "")
-        t1 = row.get("t1", []) or []
-        t2 = row.get("t2", []) or []
-        s1 = row.get("t1_score", None)
-        s2 = row.get("t2_score", None)
+        idx = row["게임"]
+        court = row["코트"]
+        gtype = row["타입"]
+        t1 = row["t1"]
+        t2 = row["t2"]
+        s1 = row["t1_score"]
+        s2 = row["t2_score"]
 
-        def _join_team(team):
-            if isinstance(team, (list, tuple)):
-                return ", ".join([str(v).strip() for v in team if str(v).strip()])
-            return str(team).strip()
+        t1_html = "".join(render_name_badge(n, roster_by_name) for n in t1)
+        t2_html = "".join(render_name_badge(n, roster_by_name) for n in t2)
 
-        rows.append({
-            "게임": idx,
-            "코트": court,
-            "타입": gtype,
-            "팀1": _join_team(t1),
-            "팀1 점수": "" if s1 is None else s1,
-            "팀2 점수": "" if s2 is None else s2,
-            "팀2": _join_team(t2),
-        })
+        s1_style = "border:1px solid #ddd;padding:4px;text-align:center;"
+        s2_style = "border:1px solid #ddd;padding:4px;text-align:center;"
+        if s1 is not None and s2 is not None:
+            if s1 > s2:
+                s1_style += "background-color:#fff6a5;"
+            elif s2 > s1:
+                s2_style += "background-color:#fff6a5;"
+            else:
+                s1_style += "background-color:#e0e0e0;"
+                s2_style += "background-color:#e0e0e0;"
 
-    df = pd.DataFrame(rows)
+        html.append(
+            "<tr>"
+            f"<td style='border:1px solid #ddd;padding:4px;text-align:center;color:#111111;'>{idx}</td>"
+            f"<td style='border:1px solid #ddd;padding:4px;text-align:center;color:#111111;'>{court}</td>"
+            f"<td style='border:1px solid #ddd;padding:4px;text-align:center;color:#111111;'>{gtype}</td>"
+            f"<td style='border:1px solid #ddd;padding:4px;'>{t1_html}</td>"
+            f"<td style='{s1_style}'>{'' if s1 is None else s1}</td>"
+            f"<td style='{s2_style}'>{'' if s2 is None else s2}</td>"
+            f"<td style='border:1px solid #ddd;padding:4px;'>{t2_html}</td>"
+            "</tr>"
+        )
 
-    try:
-        smart_table_hybrid(df)
-    except Exception:
-        st.dataframe(df, use_container_width=True, hide_index=True)
+    html.append("</tbody></table>")
+    st.markdown("".join(html), unsafe_allow_html=True)
 
 def section_card(title: str, emoji: str = "📌"):
     st.markdown(
@@ -5712,10 +5722,7 @@ def render_tab_today_session(tab):
 
         def _available_options_for_edit():
             # 수정 가능한 후보: 오늘 참가자(=players_selected)
-            opts = ['선택'] + sorted(players_selected)
-            if '게스트' not in opts:
-                opts.append('게스트')
-            return opts
+            return ["선택"] + sorted(players_selected)
 
         if st.session_state["edit_mode"] and schedule:
             st.markdown("### ✏️ 대진표 수정 모드")
@@ -7456,7 +7463,7 @@ with tab3:
                                 move_to = st.selectbox(
                                     "옮길 위치",
                                     list(range(1, n_games + 1)),
-                                    format_func=lambda i: labels[i - 1],
+                                    index=(move_from - 1),
                                     key=f"reorder_to_{sel_date}",
                                 )
             
