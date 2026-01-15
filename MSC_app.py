@@ -162,6 +162,13 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+def safe_rerun():
+    if hasattr(st, "rerun"):
+        st.rerun()
+    elif hasattr(st, "experimental_rerun"):
+        st.experimental_rerun()
+
+
 components.html(
     """
 <script>
@@ -7520,17 +7527,6 @@ with tab3:
 
                                     options_master = _guest_first(options)
 
-                                    def _opts_excluding_current(opts, current_val):
-                                        base = [x for x in opts if x != current_val]
-                                        # 실수 방지용 placeholder
-                                        return ["(선택)"] + base
-
-
-                                    def _idx(opts, val):
-                                        try:
-                                            return opts.index(val)
-                                        except Exception:
-                                            return 0
 
                                     # 단식/복식 구분(안전)
                                     is_singles = (gtype_g == "단식")
@@ -7545,25 +7541,45 @@ with tab3:
                                         p1 = t1_g[0] if isinstance(t1_g, (list, tuple)) and len(t1_g) > 0 else ""
                                         p2 = t2_g[0] if isinstance(t2_g, (list, tuple)) and len(t2_g) > 0 else ""
 
+                                        # ✅ 키
+                                        k1 = f"edit_g_{sel_date}_{edit_game_no}_p1"
+                                        k2 = f"edit_g_{sel_date}_{edit_game_no}_p2"
+
+                                        # ✅ 디폴트는 원래 선수
+                                        if k1 not in st.session_state:
+                                            st.session_state[k1] = p1
+                                        if k2 not in st.session_state:
+                                            st.session_state[k2] = p2
+
+                                        cur1 = st.session_state.get(k1, p1)
+                                        cur2 = st.session_state.get(k2, p2)
+
                                         cA, cB = st.columns(2)
                                         with cA:
+                                            other_for_1 = {cur2}
+                                            opts1 = _slot_options(options_master, cur1, other_for_1)
                                             new_p1 = st.selectbox(
                                                 "팀1 선수",
-                                                _opts_excluding_current(options, p1),
-                                                index=0,
-                                                key=f"edit_g_{sel_date}_{edit_game_no}_p1",
-                                            )
-                                        with cB:
-                                            new_p2 = st.selectbox(
-                                                "팀2 선수",
-                                                _opts_excluding_current(options, p2),
-                                                index=0,
-                                                key=f"edit_g_{sel_date}_{edit_game_no}_p2",
+                                                opts1,
+                                                index=opts1.index(cur1) if cur1 in opts1 else 0,
+                                                key=k1,
                                             )
 
+                                        with cB:
+                                            cur1_now = st.session_state.get(k1, cur1)
+                                            other_for_2 = {cur1_now}
+                                            cur2_now = st.session_state.get(k2, cur2)
+                                            opts2 = _slot_options(options_master, cur2_now, other_for_2)
+                                            new_p2 = st.selectbox(
+                                                "팀2 선수",
+                                                opts2,
+                                                index=opts2.index(cur2_now) if cur2_now in opts2 else 0,
+                                                key=k2,
+                                            )
 
                                         new_t1 = (new_p1,)
                                         new_t2 = (new_p2,)
+
 
 
                                     else:
