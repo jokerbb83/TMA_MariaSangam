@@ -62,7 +62,7 @@ def render_footer():
     if IS_SCOREBOARD:
         st.markdown(
             '<div style="margin: 22px 0 10px; text-align:center; color:#9ca3af; font-size:0.82rem;">'
-            f'📣 <b>{CLUB_NAME()} 스코어보드</b> · <span style="color:#6b7280;">읽기 전용</span><br/>'
+            f'📣 <b>{CLUB_NAME()} 테니스노트</b> · <span style="color:#6b7280;">읽기 전용</span><br/>'
             'Copyright ⓒ 2026. Studioroom. All rights reserved.'
             "</div>",
             unsafe_allow_html=True,
@@ -70,6 +70,7 @@ def render_footer():
     else:
         st.markdown(
             '<div style="margin: 26px 0 10px; text-align:center; color:#9ca3af; font-size:0.82rem;">'
+            f'📣 <b>{CLUB_NAME()} 테니스노트</b> · <span style="color:#6b7280;">관리자용</span><br/>'
             'Copyright ⓒ 2026. Studioroom. All rights reserved.'
             "</div>",
             unsafe_allow_html=True,
