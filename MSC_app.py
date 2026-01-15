@@ -7488,7 +7488,10 @@ with tab3:
                                             cur_names.extend([x for x in _team if x])
                                         elif _team:
                                             cur_names.append(_team)
-                                    options = sorted((set(base_opts) | set(cur_names) | {"게스트"}) - {None, ""})
+                                    options = sorted(
+                                        {x for x in (set(base_opts) | set(cur_names) | {"게스트"}) if str(x).strip() != ""}
+                                    )
+
 
 
 
@@ -7536,6 +7539,8 @@ with tab3:
 
                                         new_t1 = (new_p1,)
                                         new_t2 = (new_p2,)
+
+
                                     else:
                                         p11 = t1_g[0] if len(t1_g) > 0 else ""
                                         p12 = t1_g[1] if len(t1_g) > 1 else ""
@@ -7543,6 +7548,7 @@ with tab3:
                                         p22 = t2_g[1] if len(t2_g) > 1 else ""
 
                                         c1a, c1b = st.columns(2)
+
                                         with c1a:
                                             st.caption("팀1")
                                             new_p11 = st.selectbox(
@@ -7557,7 +7563,9 @@ with tab3:
                                                 index=0,
                                                 key=f"edit_g_{sel_date}_{edit_game_no}_p12",
                                             )
-...
+
+                                        with c1b:
+                                            st.caption("팀2")
                                             new_p21 = st.selectbox(
                                                 "팀2-1",
                                                 _opts_excluding_current(options, p21),
@@ -7573,6 +7581,9 @@ with tab3:
 
                                         new_t1 = (new_p11, new_p12)
                                         new_t2 = (new_p21, new_p22)
+
+
+
 
                                     apply_one_game = st.button(
                                         "✅ 이 게임만 변경 적용",
