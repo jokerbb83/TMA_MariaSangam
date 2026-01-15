@@ -21,6 +21,7 @@ HERE = Path(__file__).resolve().parent
 
 # ✅ 연결 대상(관리자 앱) 후보들
 CANDIDATES = [
+
     "MSC_app.py",        # ✅ 기준(관리자) 앱 파일
 ]
 
