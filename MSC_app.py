@@ -7703,93 +7703,119 @@ with tab3:
                                                 safe_rerun()
 
 
-                    # -----------------------------
-                    # (B) 게임(경기) 순서만 변경
-                    #     - 선수/대진/코트는 그대로
-                    #     - 결과(results)도 함께 이동
-                    # -----------------------------
-                    with col_reorder:
-                        with st.expander("🔀 게임 순서 변경", expanded=False):
-                            n_games = len(_sched_now)
-            
-                            def _team_join(team):
-                                if isinstance(team, (list, tuple)):
-                                    return " / ".join([str(x) for x in team if str(x).strip() != ""])
-                                return str(team) if team is not None else ""
-            
-                            labels = []
-                            for i, (gtype, t1, t2, court) in enumerate(_sched_now, start=1):
-                                labels.append(f"{i}번 ({gtype}, 코트 {court})  {_team_join(t1)} vs {_team_join(t2)}")
-            
-                            if n_games <= 1:
-                                st.info("게임이 1개라서 순서를 바꿀 수 없어.")
-                            else:
-                                move_from = st.selectbox(
-                                    "이동할 게임",
-                                    list(range(1, n_games + 1)),
-                                    format_func=lambda i: labels[i - 1],
-                                    key=f"reorder_from_{sel_date}",
-                                )
-                                move_to = st.selectbox(
-                                    "옮길 위치",
-                                    list(range(1, n_games + 1)),
-                                    format_func=lambda i: labels[i - 1],
-                                    key=f"reorder_to_{sel_date}",
-                                )
-            
-                                apply_reorder = st.button(
-                                    "✅ 순서 변경 적용",
-                                    use_container_width=True,
-                                    key=f"reorder_apply_{sel_date}",
-                                )
-                                st.caption("※ 선수/대진/코트는 그대로 두고, 게임의 표시 순서만 바꿉니다. (점수도 해당 게임과 같이 이동)")
-            
-                                if apply_reorder:
-                                    if move_from == move_to:
-                                        st.info("같은 위치라서 변경할 게 없어.")
-                                    else:
-                                        order = list(range(n_games))
-                                        item = order.pop(move_from - 1)
-                                        order.insert(move_to - 1, item)
+                        # -----------------------------
+                        # (B) 게임(경기) 순서만 변경
+                        #     - 선수/대진/코트는 그대로
+                        #     - 결과(results)도 함께 이동
+                        # -----------------------------
+                        with col_reorder:
+                            with st.expander("🔀 게임 순서 변경", expanded=False):
+                                n_games = len(_sched_now)
 
-                                        # schedule 재정렬
-                                        new_schedule = [_sched_now[i] for i in order]
+                                def _team_join(team):
+                                    if isinstance(team, (list, tuple)):
+                                        return " / ".join([str(x) for x in team if str(x).strip() != ""])
+                                    return str(team) if team is not None else ""
 
-                                        # results도 같은 순서로 이동
-                                        old_results = day_data.get("results", {}) or {}
+                                labels = []
+                                for i, (gtype, t1, t2, court) in enumerate(_sched_now, start=1):
+                                    labels.append(f"{i}번 ({gtype}, 코트 {court})  {_team_join(t1)} vs {_team_join(t2)}")
 
-                                        def _get_result_by_index(idx0: int):
-                                            k1 = str(idx0 + 1)
-                                            k2 = idx0 + 1
-                                            if isinstance(old_results, dict):
-                                                return old_results.get(k1) or old_results.get(k2) or {}
-                                            if isinstance(old_results, list):
-                                                return old_results[idx0] if idx0 < len(old_results) else {}
-                                            return {}
+                                if n_games <= 1:
+                                    st.info("게임이 1개라서 순서를 바꿀 수 없어.")
+                                else:
+                                    # ✅ 변경 방식: 이동(끼워넣기) / 스왑(서로 교환)
+                                    reorder_mode = st.radio(
+                                        "변경 방식",
+                                        ["이동(끼워넣기)", "서로 교환(스왑)"],
+                                        horizontal=True,
+                                        key=f"reorder_mode_{sel_date}",
+                                    )
 
-                                        old_res_list = [_get_result_by_index(i) for i in range(n_games)]
-                                        new_res_list = [old_res_list[i] for i in order]
-                                        new_results = {str(i + 1): (new_res_list[i] or {}) for i in range(n_games)}
+                                    move_from = st.selectbox(
+                                        "이동할 게임",
+                                        list(range(1, n_games + 1)),
+                                        format_func=lambda i: labels[i - 1],
+                                        key=f"reorder_from_{sel_date}",
+                                    )
+                                    move_to = st.selectbox(
+                                        "옮길 위치",
+                                        list(range(1, n_games + 1)),
+                                        format_func=lambda i: labels[i - 1],
+                                        key=f"reorder_to_{sel_date}",
+                                    )
 
-                                        day_data["schedule"] = new_schedule
-                                        day_data["results"] = new_results
-                                        sessions[sel_date] = day_data
-                                        st.session_state.sessions = sessions
-                                        save_sessions(sessions)
+                                    apply_reorder = st.button(
+                                        "✅ 순서 변경 적용",
+                                        use_container_width=True,
+                                        key=f"reorder_apply_{sel_date}",
+                                    )
+                                    st.caption("※ 선수/대진/코트는 그대로 두고, 게임의 표시 순서만 바꿉니다. (점수도 해당 게임과 같이 이동)")
 
-                                        # ✅ 핵심: 점수/사이드 위젯 키 초기화 (그래야 화면 점수가 새 results로 다시 잡힘)
-                                        for i in range(1, n_games + 1):
+                                    if apply_reorder:
+                                        if move_from == move_to:
+                                            st.info("같은 위치라서 변경할 게 없어.")
+                                        else:
+                                            order = list(range(n_games))
+
+                                            # ✅ 모드별 순서 계산
+                                            if reorder_mode == "서로 교환(스왑)":
+                                                a = move_from - 1
+                                                b = move_to - 1
+                                                order[a], order[b] = order[b], order[a]
+                                            else:
+                                                item = order.pop(move_from - 1)
+                                                order.insert(move_to - 1, item)
+
+                                            # schedule 재정렬
+                                            new_schedule = [_sched_now[i] for i in order]
+
+                                            # ✅ results도 같은 순서로 이동 (문자키/숫자키/list 모두 대응)
+                                            old_results = day_data.get("results", {}) or {}
+
+                                            def _get_result_by_index(idx0: int):
+                                                """idx0: 0-based game index"""
+                                                k1 = str(idx0 + 1)
+                                                k2 = idx0 + 1
+                                                if isinstance(old_results, dict):
+                                                    return old_results.get(k1) or old_results.get(k2) or {}
+                                                if isinstance(old_results, list):
+                                                    return old_results[idx0] if idx0 < len(old_results) else {}
+                                                return {}
+
+                                            old_res_list = [_get_result_by_index(i) for i in range(n_games)]
+                                            new_res_list = [old_res_list[i] for i in order]
+                                            new_results = {str(i + 1): (new_res_list[i] or {}) for i in range(n_games)}
+
+                                            day_data["schedule"] = new_schedule
+                                            day_data["results"] = new_results
+                                            sessions[sel_date] = day_data
+                                            st.session_state.sessions = sessions
+                                            save_sessions(sessions)
+
+                                            # ✅ 핵심: 점수/사이드 위젯 키 초기화 (그래야 화면 점수가 새 results로 다시 잡힘)
+                                            for i in range(1, n_games + 1):
+                                                for k in (
+                                                    f"{sel_date}_s1_{i}",
+                                                    f"{sel_date}_s2_{i}",
+                                                    f"{sel_date}_side_radio_{i}_t1",
+                                                    f"{sel_date}_side_radio_{i}_t2",
+                                                ):
+                                                    if k in st.session_state:
+                                                        del st.session_state[k]
+
+                                            # ✅ 순서 변경 selectbox/모드도 초기화(선택 꼬임 방지)
                                             for k in (
-                                                f"{sel_date}_s1_{i}",
-                                                f"{sel_date}_s2_{i}",
-                                                f"{sel_date}_side_radio_{i}_t1",
-                                                f"{sel_date}_side_radio_{i}_t2",
+                                                f"reorder_from_{sel_date}",
+                                                f"reorder_to_{sel_date}",
+                                                f"reorder_mode_{sel_date}",
                                             ):
                                                 if k in st.session_state:
                                                     del st.session_state[k]
 
-                                        st.session_state["_flash_day_edit_msg"] = "✅ 게임 순서 변경 완료! (점수도 함께 이동됨)"
-                                        safe_rerun()
+                                            st.session_state["_flash_day_edit_msg"] = "✅ 게임 순서 변경 완료! (점수도 함께 이동됨)"
+                                            safe_rerun()
+
 
 
 # 2. 오늘의 요약 리포트 (자동 생성)
