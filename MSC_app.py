@@ -7704,9 +7704,9 @@ with tab3:
 
 
                         # -----------------------------
-                        # (B) 게임(경기) 순서만 변경
+                        # (B) 게임(경기) 순서 변경 (무조건 서로 교환/스왑)
                         #     - 선수/대진/코트는 그대로
-                        #     - 결과(results)도 함께 이동
+                        #     - 결과(results)도 함께 교환
                         # -----------------------------
                         with col_reorder:
                             with st.expander("🔀 게임 순서 변경", expanded=False):
@@ -7724,22 +7724,14 @@ with tab3:
                                 if n_games <= 1:
                                     st.info("게임이 1개라서 순서를 바꿀 수 없어.")
                                 else:
-                                    # ✅ 변경 방식: 이동(끼워넣기) / 스왑(서로 교환)
-                                    reorder_mode = st.radio(
-                                        "변경 방식",
-                                        ["이동(끼워넣기)", "서로 교환(스왑)"],
-                                        horizontal=True,
-                                        key=f"reorder_mode_{sel_date}",
-                                    )
-
-                                    move_from = st.selectbox(
-                                        "이동할 게임",
+                                    swap_a = st.selectbox(
+                                        "교환할 게임 A",
                                         list(range(1, n_games + 1)),
                                         format_func=lambda i: labels[i - 1],
                                         key=f"reorder_from_{sel_date}",
                                     )
-                                    move_to = st.selectbox(
-                                        "옮길 위치",
+                                    swap_b = st.selectbox(
+                                        "교환할 게임 B",
                                         list(range(1, n_games + 1)),
                                         format_func=lambda i: labels[i - 1],
                                         key=f"reorder_to_{sel_date}",
@@ -7750,31 +7742,25 @@ with tab3:
                                         use_container_width=True,
                                         key=f"reorder_apply_{sel_date}",
                                     )
-                                    st.caption("※ 선수/대진/코트는 그대로 두고, 게임의 표시 순서만 바꿉니다. (점수도 해당 게임과 같이 이동)")
+                                    st.caption("※ 선택한 두 게임의 순서를 서로 교환합니다. (점수도 해당 게임과 같이 교환)")
 
                                     if apply_reorder:
-                                        if move_from == move_to:
-                                            st.info("같은 위치라서 변경할 게 없어.")
+                                        if swap_a == swap_b:
+                                            st.info("같은 게임이라서 교환할 게 없어.")
                                         else:
+                                            # ✅ 스왑(서로 교환)용 order 생성
                                             order = list(range(n_games))
+                                            ia = swap_a - 1
+                                            ib = swap_b - 1
+                                            order[ia], order[ib] = order[ib], order[ia]
 
-                                            # ✅ 모드별 순서 계산
-                                            if reorder_mode == "서로 교환(스왑)":
-                                                a = move_from - 1
-                                                b = move_to - 1
-                                                order[a], order[b] = order[b], order[a]
-                                            else:
-                                                item = order.pop(move_from - 1)
-                                                order.insert(move_to - 1, item)
-
-                                            # schedule 재정렬
+                                            # schedule 재정렬(스왑)
                                             new_schedule = [_sched_now[i] for i in order]
 
-                                            # ✅ results도 같은 순서로 이동 (문자키/숫자키/list 모두 대응)
+                                            # ✅ results도 같은 방식으로 스왑 (문자키/숫자키/list 모두 대응)
                                             old_results = day_data.get("results", {}) or {}
 
                                             def _get_result_by_index(idx0: int):
-                                                """idx0: 0-based game index"""
                                                 k1 = str(idx0 + 1)
                                                 k2 = idx0 + 1
                                                 if isinstance(old_results, dict):
@@ -7804,19 +7790,16 @@ with tab3:
                                                     if k in st.session_state:
                                                         del st.session_state[k]
 
-                                            # ✅ 순서 변경 selectbox/모드도 초기화(선택 꼬임 방지)
+                                            # ✅ 순서 변경 selectbox도 초기화(선택 꼬임 방지)
                                             for k in (
                                                 f"reorder_from_{sel_date}",
                                                 f"reorder_to_{sel_date}",
-                                                f"reorder_mode_{sel_date}",
                                             ):
                                                 if k in st.session_state:
                                                     del st.session_state[k]
 
-                                            st.session_state["_flash_day_edit_msg"] = "✅ 게임 순서 변경 완료! (점수도 함께 이동됨)"
+                                            st.session_state["_flash_day_edit_msg"] = "✅ 게임 순서 교환 완료! (점수도 함께 교환됨)"
                                             safe_rerun()
-
-
 
 # 2. 오늘의 요약 리포트 (자동 생성)
             # =====================================================
