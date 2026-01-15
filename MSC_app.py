@@ -7751,30 +7751,36 @@ with tab3:
                                         order = list(range(n_games))
                                         item = order.pop(move_from - 1)
                                         order.insert(move_to - 1, item)
-            
+
                                         # schedule 재정렬
                                         new_schedule = [_sched_now[i] for i in order]
-            
-                                        # results도 같은 순서로 이동
+
+                                        # ✅ results도 같은 순서로 이동 (문자키/숫자키/list 모두 대응)
                                         old_results = day_data.get("results", {}) or {}
-                                        old_res_list = []
-                                        for i in range(n_games):
-                                            r = old_results.get(str(i + 1)) or old_results.get(i + 1) or {}
-                                            old_res_list.append(r)
+
+                                        def _get_result_by_index(idx0: int):
+                                            """idx0: 0-based game index"""
+                                            k1 = str(idx0 + 1)
+                                            k2 = idx0 + 1
+                                            if isinstance(old_results, dict):
+                                                return old_results.get(k1) or old_results.get(k2) or {}
+                                            if isinstance(old_results, list):
+                                                return old_results[idx0] if idx0 < len(old_results) else {}
+                                            return {}
+
+                                        old_res_list = [_get_result_by_index(i) for i in range(n_games)]
                                         new_res_list = [old_res_list[i] for i in order]
-                                        new_results = {str(i + 1): new_res_list[i] for i in range(n_games)}
-            
+                                        new_results = {str(i + 1): (new_res_list[i] or {}) for i in range(n_games)}
+
                                         day_data["schedule"] = new_schedule
                                         day_data["results"] = new_results
                                         sessions[sel_date] = day_data
                                         st.session_state.sessions = sessions
                                         save_sessions(sessions)
-            
-                                        st.success("게임 순서 변경 완료!")
-                                        if hasattr(st, "rerun"):
-                                            st.rerun()
-                                        elif hasattr(st, "experimental_rerun"):
-                                            st.experimental_rerun()
+
+                                        st.session_state["_flash_day_edit_msg"] = "✅ 게임 순서 변경 완료! (점수도 함께 이동됨)"
+                                        safe_rerun()
+
 
 # 2. 오늘의 요약 리포트 (자동 생성)
             # =====================================================
