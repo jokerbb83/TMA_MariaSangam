@@ -7362,151 +7362,74 @@ with tab3:
             if (not IS_OBSERVER) and (sel_date != "전체"):
                 _sched_now = day_data.get("schedule", []) or []
                 if _sched_now:
-                    col_swap, col_reorder = st.columns(2)
-                    # -----------------------------
-                    # (A) 당일 선수 이름 일괄 교체
-                    # -----------------------------
-                    with col_swap:
-                        with st.expander("👥 당일 선수 수정", expanded=False):
-                            # 오늘 대진표에 등장하는 선수 목록
-                            _names = set()
-                            for _gtype, _t1, _t2, _court in _sched_now:
-                                if isinstance(_t1, (list, tuple)):
-                                    _names.update([x for x in _t1 if x])
-                                if isinstance(_t2, (list, tuple)):
-                                    _names.update([x for x in _t2 if x])
-                            day_names = sorted(_names)
-            
-                            roster = st.session_state.get("roster", []) or []
-                            roster_names = sorted(
-                                {p.get("name") for p in roster if isinstance(p, dict) and p.get("name")}
-                            )
-            
-                            if not day_names:
-                                st.info("이 날짜 대진표(schedule)에 선수 정보가 없어.")
-                            else:
-                                old_name = st.selectbox(
-                                    "바꿀 선수(기존)",
-                                    day_names,
-                                    key=f"swap_old_{sel_date}",
-                                )
-            
-                                # 새 선수 후보: roster가 있으면 roster 우선, 없으면 day_names로
-                                new_options = roster_names if roster_names else day_names
-                                new_name = st.selectbox(
-                                    "변경할 선수(새)",
-                                    new_options,
-                                    key=f"swap_new_{sel_date}",
-                                )
-            
-                                c1, c2 = st.columns([2, 3])
-                                with c1:
-                                    apply_swap = st.button(
-                                        "✅ 변경 적용",
-                                        use_container_width=True,
-                                        key=f"swap_apply_{sel_date}",
-                                    )
-                                with c2:
-                                    st.caption("※ 적용하면 오늘 대진표에서 해당 이름이 전부 교체돼. 점수는 유지돼.")
-            
-                                if apply_swap:
-                                    if old_name == new_name:
-                                        st.warning("기존/새 이름이 같아. 다른 이름을 선택해줘.")
-                                    else:
-                                        def _rep_team(team):
-                                            if isinstance(team, (list, tuple)):
-                                                return type(team)([new_name if x == old_name else x for x in team])
-                                            return team
-            
-                                        new_schedule = []
-                                        for gtype, t1, t2, court in _sched_now:
-                                            new_schedule.append((gtype, _rep_team(t1), _rep_team(t2), court))
-            
-                                        day_data["schedule"] = new_schedule
-                                        sessions[sel_date] = day_data
-                                        st.session_state.sessions = sessions
-                                        save_sessions(sessions)
-            
-                                        st.success("적용 완료! (GitHub 저장 버튼을 쓰는 경우엔 아래 '✅ 경기기록 저장'도 눌러줘)")
-                                        if hasattr(st, "rerun"):
-                                            st.rerun()
-                                        elif hasattr(st, "experimental_rerun"):
-                                            st.experimental_rerun()
-            
-                    # -----------------------------
-                    # (B) 게임(경기) 순서만 변경
-                    #     - 선수/대진/코트는 그대로
-                    #     - 결과(results)도 함께 이동
-                    # -----------------------------
-                    with col_reorder:
-                        with st.expander("🔀 게임 순서 변경", expanded=False):
-                            n_games = len(_sched_now)
-            
-                            def _team_join(team):
-                                if isinstance(team, (list, tuple)):
-                                    return " / ".join([str(x) for x in team if str(x).strip() != ""])
-                                return str(team) if team is not None else ""
-            
-                            labels = []
-                            for i, (gtype, t1, t2, court) in enumerate(_sched_now, start=1):
-                                labels.append(f"{i}번 ({gtype}, 코트 {court})  {_team_join(t1)} vs {_team_join(t2)}")
-            
-                            if n_games <= 1:
-                                st.info("게임이 1개라서 순서를 바꿀 수 없어.")
-                            else:
-                                move_from = st.selectbox(
-                                    "이동할 게임",
-                                    list(range(1, n_games + 1)),
-                                    format_func=lambda i: labels[i - 1],
-                                    key=f"reorder_from_{sel_date}",
-                                )
-                                move_to = st.selectbox(
-                                    "옮길 위치",
-                                    list(range(1, n_games + 1)),
-                                    index=(move_from - 1),
-                                    key=f"reorder_to_{sel_date}",
-                                )
-            
-                                apply_reorder = st.button(
-                                    "✅ 순서 변경 적용",
-                                    use_container_width=True,
-                                    key=f"reorder_apply_{sel_date}",
-                                )
-                                st.caption("※ 선수/대진/코트는 그대로 두고, 게임의 표시 순서만 바꿉니다. (점수도 해당 게임과 같이 이동)")
-            
-                                if apply_reorder:
-                                    if move_from == move_to:
-                                        st.info("같은 위치라서 변경할 게 없어.")
-                                    else:
-                                        order = list(range(n_games))
-                                        item = order.pop(move_from - 1)
-                                        order.insert(move_to - 1, item)
-            
-                                        # schedule 재정렬
-                                        new_schedule = [_sched_now[i] for i in order]
-            
-                                        # results도 같은 순서로 이동
-                                        old_results = day_data.get("results", {}) or {}
-                                        old_res_list = []
-                                        for i in range(n_games):
-                                            r = old_results.get(str(i + 1)) or old_results.get(i + 1) or {}
-                                            old_res_list.append(r)
-                                        new_res_list = [old_res_list[i] for i in order]
-                                        new_results = {str(i + 1): new_res_list[i] for i in range(n_games)}
-            
-                                        day_data["schedule"] = new_schedule
-                                        day_data["results"] = new_results
-                                        sessions[sel_date] = day_data
-                                        st.session_state.sessions = sessions
-                                        save_sessions(sessions)
-            
-                                        st.success("게임 순서 변경 완료!")
-                                        if hasattr(st, "rerun"):
-                                            st.rerun()
-                                        elif hasattr(st, "experimental_rerun"):
-                                            st.experimental_rerun()
+                    with st.expander("👥 당일 선수 수정", expanded=False):
+                        # 오늘 대진표에 등장하는 선수 목록
+                        _names = set()
+                        for _gtype, _t1, _t2, _court in _sched_now:
+                            if isinstance(_t1, (list, tuple)):
+                                _names.update([x for x in _t1 if x])
+                            if isinstance(_t2, (list, tuple)):
+                                _names.update([x for x in _t2 if x])
+                        day_names = sorted(_names)
 
-# 2. 오늘의 요약 리포트 (자동 생성)
+                        roster = st.session_state.get("roster", []) or []
+                        roster_names = sorted(
+                            {p.get("name") for p in roster if isinstance(p, dict) and p.get("name")}
+                        )
+
+                        if not day_names:
+                            st.info("이 날짜 대진표(schedule)에 선수 정보가 없어.")
+                        else:
+                            old_name = st.selectbox(
+                                "바꿀 선수(기존)",
+                                day_names,
+                                key=f"swap_old_{sel_date}",
+                            )
+
+                            # 새 선수 후보: roster가 있으면 roster 우선, 없으면 day_names로
+                            new_options = roster_names if roster_names else day_names
+                            new_name = st.selectbox(
+                                "변경할 선수(새)",
+                                new_options,
+                                key=f"swap_new_{sel_date}",
+                            )
+
+                            c1, c2 = st.columns([2, 3])
+                            with c1:
+                                apply_swap = st.button(
+                                    "✅ 변경 적용",
+                                    use_container_width=True,
+                                    key=f"swap_apply_{sel_date}",
+                                )
+                            with c2:
+                                st.caption("※ 적용하면 오늘 대진표에서 해당 이름이 전부 교체돼. 점수는 유지돼.")
+
+                            if apply_swap:
+                                if old_name == new_name:
+                                    st.warning("기존/새 이름이 같아. 다른 이름을 선택해줘.")
+                                else:
+                                    def _rep_team(team):
+                                        if isinstance(team, (list, tuple)):
+                                            return type(team)([new_name if x == old_name else x for x in team])
+                                        return team
+
+                                    new_schedule = []
+                                    for gtype, t1, t2, court in _sched_now:
+                                        new_schedule.append((gtype, _rep_team(t1), _rep_team(t2), court))
+
+                                    day_data["schedule"] = new_schedule
+                                    sessions[sel_date] = day_data
+                                    st.session_state.sessions = sessions
+                                    save_sessions(sessions)
+
+                                    st.success("적용 완료! (GitHub 저장 버튼을 쓰는 경우엔 아래 '✅ 경기기록 저장'도 눌러줘)")
+                                    if hasattr(st, "rerun"):
+                                        st.rerun()
+                                    elif hasattr(st, "experimental_rerun"):
+                                        st.experimental_rerun()
+
+            
+            # 2. 오늘의 요약 리포트 (자동 생성)
             # =====================================================
             try:
                 report_lines = build_daily_report(sel_date, day_data)
