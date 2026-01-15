@@ -7383,6 +7383,9 @@ with tab3:
                         )
 
                         col_swap, col_reorder = st.columns(2)
+
+
+
                         # -----------------------------
                         # (A) 선수 이름 일괄 교체 + (A-2) 한 게임만 선수 변경
                         # -----------------------------
@@ -7398,12 +7401,19 @@ with tab3:
                                     )
 
                                     # 새 선수 후보: roster가 있으면 roster 우선, 없으면 day_names로
-                                    new_options = roster_names if roster_names else day_names
-                                    new_name = st.selectbox(
-                                        "변경할 선수(새)",
-                                        new_options,
-                                        key=f"swap_new_{sel_date}",
-                                    )
+                                    _base_new_options = roster_names if roster_names else day_names
+                                    new_options = [x for x in _base_new_options if x != old_name]
+
+                                    if not new_options:
+                                        st.warning("바꿀 수 있는 다른 선수가 없어. 선수 목록(로스터)을 먼저 확인해줘.")
+                                        new_name = old_name
+                                    else:
+                                        new_name = st.selectbox(
+                                            "변경할 선수(새)",
+                                            new_options,
+                                            key=f"swap_new_{sel_date}",
+                                        )
+
 
                                     c1, c2 = st.columns([2, 3])
                                     with c1:
@@ -7478,7 +7488,15 @@ with tab3:
                                             cur_names.extend([x for x in _team if x])
                                         elif _team:
                                             cur_names.append(_team)
-                                    options = sorted(set(base_opts) | set(cur_names))
+                                    options = sorted((set(base_opts) | set(cur_names) | {"게스트"}) - {None, ""})
+
+
+
+                                    def _opts_excluding_current(opts, current_val):
+                                        base = [x for x in opts if x != current_val]
+                                        # 실수 방지용 placeholder
+                                        return ["(선택)"] + base
+
 
                                     def _idx(opts, val):
                                         try:
@@ -7503,17 +7521,18 @@ with tab3:
                                         with cA:
                                             new_p1 = st.selectbox(
                                                 "팀1 선수",
-                                                options,
-                                                index=_idx(options, p1) if options else 0,
+                                                _opts_excluding_current(options, p1),
+                                                index=0,
                                                 key=f"edit_g_{sel_date}_{edit_game_no}_p1",
                                             )
                                         with cB:
                                             new_p2 = st.selectbox(
                                                 "팀2 선수",
-                                                options,
-                                                index=_idx(options, p2) if options else 0,
+                                                _opts_excluding_current(options, p2),
+                                                index=0,
                                                 key=f"edit_g_{sel_date}_{edit_game_no}_p2",
                                             )
+
 
                                         new_t1 = (new_p1,)
                                         new_t2 = (new_p2,)
@@ -7528,28 +7547,27 @@ with tab3:
                                             st.caption("팀1")
                                             new_p11 = st.selectbox(
                                                 "팀1-1",
-                                                options,
-                                                index=_idx(options, p11) if options else 0,
+                                                _opts_excluding_current(options, p11),
+                                                index=0,
                                                 key=f"edit_g_{sel_date}_{edit_game_no}_p11",
                                             )
                                             new_p12 = st.selectbox(
                                                 "팀1-2",
-                                                options,
-                                                index=_idx(options, p12) if options else 0,
+                                                _opts_excluding_current(options, p12),
+                                                index=0,
                                                 key=f"edit_g_{sel_date}_{edit_game_no}_p12",
                                             )
-                                        with c1b:
-                                            st.caption("팀2")
+...
                                             new_p21 = st.selectbox(
                                                 "팀2-1",
-                                                options,
-                                                index=_idx(options, p21) if options else 0,
+                                                _opts_excluding_current(options, p21),
+                                                index=0,
                                                 key=f"edit_g_{sel_date}_{edit_game_no}_p21",
                                             )
                                             new_p22 = st.selectbox(
                                                 "팀2-2",
-                                                options,
-                                                index=_idx(options, p22) if options else 0,
+                                                _opts_excluding_current(options, p22),
+                                                index=0,
                                                 key=f"edit_g_{sel_date}_{edit_game_no}_p22",
                                             )
 
@@ -7564,34 +7582,41 @@ with tab3:
                                     st.caption("※ 선택한 1게임만 선수 구성을 바꿉니다. 점수는 그대로 유지됩니다.")
 
                                     if apply_one_game:
-                                        chosen = [x for x in (list(new_t1) + list(new_t2)) if x]
-                                        if len(chosen) != len(set(chosen)):
-                                            st.warning("같은 선수가 한 게임에 중복되어 있어. 확인해줘.")
+                                        chosen_raw = list(new_t1) + list(new_t2)
+
+                                        # ✅ (선택)이 남아있으면 적용 금지
+                                        if any((x == "(선택)") for x in chosen_raw):
+                                            st.warning("아직 선택 안 한 자리가 있어. 전부 선택해줘.")
                                         else:
-                                            # 원래 타입 유지(list/tuple)
-                                            def _as_type(orig, tpl):
-                                                if isinstance(orig, list):
-                                                    return list(tpl)
-                                                if isinstance(orig, tuple):
-                                                    return tuple(tpl)
-                                                return tpl
+                                            chosen = [x for x in chosen_raw if x]
+                                            if len(chosen) != len(set(chosen)):
+                                                st.warning("같은 선수가 한 게임에 중복되어 있어. 확인해줘.")
+                                            else:
+                                                # 원래 타입 유지(list/tuple)
+                                                def _as_type(orig, tpl):
+                                                    if isinstance(orig, list):
+                                                        return list(tpl)
+                                                    if isinstance(orig, tuple):
+                                                        return tuple(tpl)
+                                                    return tpl
 
-                                            new_schedule = list(_sched_now)
-                                            new_schedule[edit_game_no - 1] = (
-                                                gtype_g,
-                                                _as_type(t1_g, new_t1),
-                                                _as_type(t2_g, new_t2),
-                                                court_g,
-                                            )
+                                                new_schedule = list(_sched_now)
+                                                new_schedule[edit_game_no - 1] = (
+                                                    gtype_g,
+                                                    _as_type(t1_g, new_t1),
+                                                    _as_type(t2_g, new_t2),
+                                                    court_g,
+                                                )
 
-                                            day_data["schedule"] = new_schedule
-                                            sessions[sel_date] = day_data
-                                            st.session_state.sessions = sessions
-                                            save_sessions(sessions)
+                                                day_data["schedule"] = new_schedule
+                                                sessions[sel_date] = day_data
+                                                st.session_state.sessions = sessions
+                                                save_sessions(sessions)
 
-                                            st.session_state["_flash_day_edit_msg"] = f"✅ {edit_game_no}번 게임 선수 변경 완료!"
-                                            safe_rerun()
-            
+                                                st.session_state["_flash_day_edit_msg"] = f"✅ {edit_game_no}번 게임 선수 변경 완료!"
+                                                safe_rerun()
+
+
                     # -----------------------------
                     # (B) 게임(경기) 순서만 변경
                     #     - 선수/대진/코트는 그대로
@@ -8748,3 +8773,4 @@ with tab5:
 # ✅ 모든 탭 공통 푸터
 # =========================================================
 render_footer()
+
