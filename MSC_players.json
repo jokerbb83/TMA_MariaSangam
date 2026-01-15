@@ -388,5 +388,15 @@
     "group": "B조",
     "ntrp": 2.0,
     "mbti": "모름"
+  },
+  {
+    "name": "박서영",
+    "gender": "여",
+    "hand": "오른손",
+    "age_group": "30대",
+    "racket": "헤드",
+    "group": "B조",
+    "ntrp": 2.0,
+    "mbti": "ESTP"
   }
 ]
