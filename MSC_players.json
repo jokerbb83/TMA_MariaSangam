@@ -271,13 +271,13 @@
   },
   {
     "name": "정동민",
-    "age_group": "비밀",
+    "age_group": "40대",
     "gender": "남",
     "hand": "오른손",
     "racket": "모름",
     "group": "B조",
-    "ntrp": null,
-    "mbti": "모름"
+    "ntrp": 2.0,
+    "mbti": "INFP"
   },
   {
     "name": "정순혁",
