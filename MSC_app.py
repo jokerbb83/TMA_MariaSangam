@@ -5034,11 +5034,6 @@ def render_tab_today_session(tab):
                     team_options = sorted(set(players_selected) - picked_others | set(my_current))
 
 
-
-
-
-
-
                     picked = st.multiselect(
                         f"{team}팀 선수 선택",
                         options=team_options,                 # ✅ 여기!
@@ -7498,7 +7493,7 @@ with tab3:
                                         {x for x in (set(base_opts) | set(cur_names) | {"게스트"}) if str(x).strip() != ""}
                                     )
 
-                                    options_master = _guest_first(options)
+
 
                                     # ✅ 게스트 맨 위 옵션 구성
                                     def _guest_first(opts):
@@ -7523,7 +7518,7 @@ with tab3:
                                                 out.insert(0, current_val)
                                         return out
 
-
+                                    options_master = _guest_first(options)
 
                                     def _opts_excluding_current(opts, current_val):
                                         base = [x for x in opts if x != current_val]
