@@ -5033,6 +5033,12 @@ def render_tab_today_session(tab):
                     my_current = picks_state.get(team, [])
                     team_options = sorted(set(players_selected) - picked_others | set(my_current))
 
+
+
+
+
+
+
                     picked = st.multiselect(
                         f"{team}팀 선수 선택",
                         options=team_options,                 # ✅ 여기!
@@ -7492,6 +7498,30 @@ with tab3:
                                         {x for x in (set(base_opts) | set(cur_names) | {"게스트"}) if str(x).strip() != ""}
                                     )
 
+                                    options_master = _guest_first(options)
+
+                                    # ✅ 게스트 맨 위 옵션 구성
+                                    def _guest_first(opts):
+                                        s = [x for x in opts if str(x).strip() != "" and x is not None]
+                                        s = sorted(set(s))
+                                        if "게스트" in s:
+                                            s.remove("게스트")
+                                        return ["게스트"] + s
+
+                                    def _slot_options(master_opts, current_val, other_selected_set):
+                                        # 다른 슬롯에서 이미 선택된 선수는 제외(단, 현재 값은 유지)
+                                        blocked = set(other_selected_set or set())
+                                        blocked.discard(current_val)
+
+                                        out = [x for x in master_opts if (x == current_val) or (x not in blocked)]
+
+                                        # 혹시 current_val이 master에 없으면(드물지만) 강제로 넣어줌
+                                        if current_val and current_val not in out:
+                                            if out and out[0] == "게스트":
+                                                out.insert(1, current_val)
+                                            else:
+                                                out.insert(0, current_val)
+                                        return out
 
 
 
@@ -7547,42 +7577,76 @@ with tab3:
                                         p21 = t2_g[0] if len(t2_g) > 0 else ""
                                         p22 = t2_g[1] if len(t2_g) > 1 else ""
 
+                                        # ✅ 각 자리 key
+                                        k11 = f"edit_g_{sel_date}_{edit_game_no}_p11"
+                                        k12 = f"edit_g_{sel_date}_{edit_game_no}_p12"
+                                        k21 = f"edit_g_{sel_date}_{edit_game_no}_p21"
+                                        k22 = f"edit_g_{sel_date}_{edit_game_no}_p22"
+
+                                        # ✅ 디폴트는 "원래 선수"가 선택되게 session_state 선채움
+                                        if k11 not in st.session_state: st.session_state[k11] = p11
+                                        if k12 not in st.session_state: st.session_state[k12] = p12
+                                        if k21 not in st.session_state: st.session_state[k21] = p21
+                                        if k22 not in st.session_state: st.session_state[k22] = p22
+
+                                        # ✅ 현재 선택값(유저가 바꿨으면 그 값)
+                                        cur11 = st.session_state.get(k11, p11)
+                                        cur12 = st.session_state.get(k12, p12)
+                                        cur21 = st.session_state.get(k21, p21)
+                                        cur22 = st.session_state.get(k22, p22)
+
                                         c1a, c1b = st.columns(2)
 
                                         with c1a:
                                             st.caption("팀1")
+                                            # 다른 슬롯에서 이미 선택된 선수는 옵션에서 제외
+                                            other_for_11 = {cur12, cur21, cur22}
+                                            opts11 = _slot_options(options_master, cur11, other_for_11)
                                             new_p11 = st.selectbox(
                                                 "팀1-1",
-                                                _opts_excluding_current(options, p11),
-                                                index=0,
-                                                key=f"edit_g_{sel_date}_{edit_game_no}_p11",
+                                                opts11,
+                                                index=opts11.index(cur11) if cur11 in opts11 else 0,
+                                                key=k11,
                                             )
+
+                                            other_for_12 = {st.session_state.get(k11, cur11), cur21, cur22}
+                                            cur12_now = st.session_state.get(k12, cur12)
+                                            opts12 = _slot_options(options_master, cur12_now, other_for_12)
                                             new_p12 = st.selectbox(
                                                 "팀1-2",
-                                                _opts_excluding_current(options, p12),
-                                                index=0,
-                                                key=f"edit_g_{sel_date}_{edit_game_no}_p12",
+                                                opts12,
+                                                index=opts12.index(cur12_now) if cur12_now in opts12 else 0,
+                                                key=k12,
                                             )
 
                                         with c1b:
                                             st.caption("팀2")
+                                            cur11_now = st.session_state.get(k11, cur11)
+                                            cur12_now = st.session_state.get(k12, cur12)
+
+                                            other_for_21 = {cur11_now, cur12_now, cur22}
+                                            cur21_now = st.session_state.get(k21, cur21)
+                                            opts21 = _slot_options(options_master, cur21_now, other_for_21)
                                             new_p21 = st.selectbox(
                                                 "팀2-1",
-                                                _opts_excluding_current(options, p21),
-                                                index=0,
-                                                key=f"edit_g_{sel_date}_{edit_game_no}_p21",
+                                                opts21,
+                                                index=opts21.index(cur21_now) if cur21_now in opts21 else 0,
+                                                key=k21,
                                             )
+
+                                            cur21_now = st.session_state.get(k21, cur21_now)
+                                            other_for_22 = {cur11_now, cur12_now, cur21_now}
+                                            cur22_now = st.session_state.get(k22, cur22)
+                                            opts22 = _slot_options(options_master, cur22_now, other_for_22)
                                             new_p22 = st.selectbox(
                                                 "팀2-2",
-                                                _opts_excluding_current(options, p22),
-                                                index=0,
-                                                key=f"edit_g_{sel_date}_{edit_game_no}_p22",
+                                                opts22,
+                                                index=opts22.index(cur22_now) if cur22_now in opts22 else 0,
+                                                key=k22,
                                             )
 
                                         new_t1 = (new_p11, new_p12)
                                         new_t2 = (new_p21, new_p22)
-
-
 
 
                                     apply_one_game = st.button(
