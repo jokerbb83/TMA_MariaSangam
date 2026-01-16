@@ -971,6 +971,15 @@ def _render_mobile_table_html(html: str, *, font_px: int = 11):
     word-break: keep-all !important;
     writing-mode: horizontal-tb !important;
   }}
+
+  /* ✅ 이름 뱃지(경기 요약/통계 표에서 폭 과다 사용 방지) */
+  #{sid} .name-badge {
+    padding: 2px 6px !important;
+    margin-right: 3px !important;
+    border-radius: 6px !important;
+    font-size: 0.80rem !important;
+    font-weight: 650 !important;
+  }
   /* 인덱스/헤더가 한 글자씩 세로로 꺾이는 경우 방지 */
   #{sid} th {{
     max-width: none !important;
@@ -2398,12 +2407,27 @@ def render_score_summary_table(games, roster_by_name):
         return
     games_sorted = sorted(games, key=lambda x: x["게임"])
 
-    html = ["<table style='border-collapse:collapse;width:100%;'>"]
-    header_cols = ["게임", "코트", "타입", "팀1", "팀1 점수", "팀2 점수", "팀2"]
+    # ✅ 모바일에서 오른쪽이 잘리는 느낌을 줄이기 위해
+    #   - 점수 헤더를 짧게(팀1/팀2)
+    #   - 게임/코트/점수 칸 폭을 더 좁게
+    #   - table-layout:fixed 로 화면폭에 맞게 압축
+    html = [
+        "<table class='score-summary' style='border-collapse:collapse;width:100%;table-layout:fixed;'>"
+        "<colgroup>"
+        "<col style='width:34px'>"   # 게임
+        "<col style='width:34px'>"   # 코트
+        "<col style='width:44px'>"   # 타입
+        "<col>"                      # 팀1(선수)
+        "<col style='width:44px'>"   # 팀1 점수
+        "<col style='width:44px'>"   # 팀2 점수
+        "<col>"                      # 팀2(선수)
+        "</colgroup>"
+    ]
+    header_cols = ["게임", "코트", "타입", "팀1", "팀1", "팀2", "팀2"]
     html.append("<thead><tr>")
     for col in header_cols:
         html.append(
-            f"<th style='border:1px solid #ddd;padding:4px;text-align:center;background-color:#f5f5f5;color:#111111;'>{col}</th>"
+            f"<th style='border:1px solid #ddd;padding:3px 4px;text-align:center;background-color:#f5f5f5;color:#111111;'>{col}</th>"
         )
     html.append("</tr></thead><tbody>")
 
@@ -2419,8 +2443,8 @@ def render_score_summary_table(games, roster_by_name):
         t1_html = "".join(render_name_badge(n, roster_by_name) for n in t1)
         t2_html = "".join(render_name_badge(n, roster_by_name) for n in t2)
 
-        s1_style = "border:1px solid #ddd;padding:4px;text-align:center;"
-        s2_style = "border:1px solid #ddd;padding:4px;text-align:center;"
+        s1_style = "border:1px solid #ddd;padding:3px 4px;text-align:center;"
+        s2_style = "border:1px solid #ddd;padding:3px 4px;text-align:center;"
         if s1 is not None and s2 is not None:
             if s1 > s2:
                 s1_style += "background-color:#fff6a5;"
@@ -2432,13 +2456,13 @@ def render_score_summary_table(games, roster_by_name):
 
         html.append(
             "<tr>"
-            f"<td style='border:1px solid #ddd;padding:4px;text-align:center;color:#111111;'>{idx}</td>"
-            f"<td style='border:1px solid #ddd;padding:4px;text-align:center;color:#111111;'>{court}</td>"
-            f"<td style='border:1px solid #ddd;padding:4px;text-align:center;color:#111111;'>{gtype}</td>"
-            f"<td style='border:1px solid #ddd;padding:4px;'>{t1_html}</td>"
+            f"<td style='border:1px solid #ddd;padding:3px 4px;text-align:center;color:#111111;'>{idx}</td>"
+            f"<td style='border:1px solid #ddd;padding:3px 4px;text-align:center;color:#111111;'>{court}</td>"
+            f"<td style='border:1px solid #ddd;padding:3px 4px;text-align:center;color:#111111;'>{gtype}</td>"
+            f"<td style='border:1px solid #ddd;padding:3px 4px;'>{t1_html}</td>"
             f"<td style='{s1_style}'>{'' if s1 is None else s1}</td>"
             f"<td style='{s2_style}'>{'' if s2 is None else s2}</td>"
-            f"<td style='border:1px solid #ddd;padding:4px;'>{t2_html}</td>"
+            f"<td style='border:1px solid #ddd;padding:3px 4px;'>{t2_html}</td>"
             "</tr>"
         )
 
