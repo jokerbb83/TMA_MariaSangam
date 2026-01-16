@@ -8363,7 +8363,9 @@ with tab4:
                     df_g.index.name = "순위"
 
                     df_g["승률"] = df_g["승률"].map(lambda x: f"{x:.1f}%")
-                    st.dataframe(df_g, use_container_width=True)
+                    # ✅ 모바일: 세로로 길어지는 문제 방지(줄바꿈 금지 + 폰트/패딩 축소 + 가로스크롤)
+                    # ✅ PC: 기존처럼 인터랙티브
+                    smart_table(df_g, use_container_width=True)
 
                 make_group_df("코트 타입별 승률", by_court_type, "코트")
                 make_group_df("코트 사이드(듀스/애드)별 승률", by_side, "사이드")
