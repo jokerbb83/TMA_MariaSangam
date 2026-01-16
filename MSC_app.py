@@ -2443,7 +2443,12 @@ def render_score_summary_table(games, roster_by_name):
         )
 
     html.append("</tbody></table>")
-    st.markdown("".join(html), unsafe_allow_html=True)
+    table_html = "".join(html)
+    # ✅ 모바일: 한 줄 유지 + 가로 스크롤로 세로로 길어지는 현상 방지
+    if is_mobile():
+        _render_mobile_table_html(table_html, font_px=11)
+    else:
+        st.markdown(table_html, unsafe_allow_html=True)
 
 def section_card(title: str, emoji: str = "📌"):
     st.markdown(
@@ -7071,6 +7076,35 @@ with tab3:
                         prev_s2 = res.get("t2", 0)
 
                         all_players = list(t1) + list(t2)
+
+                        # ✅ 모바일: 게임별 한 줄 요약(팀+스코어)
+                        if mobile_mode:
+                            try:
+                                _t1_inline = ", ".join([str(x) for x in t1])
+                                _t2_inline = ", ".join([str(x) for x in t2])
+                            except Exception:
+                                _t1_inline = " ".join(map(str, t1))
+                                _t2_inline = " ".join(map(str, t2))
+                            _s1_txt = "" if prev_s1 is None else str(prev_s1)
+                            _s2_txt = "" if prev_s2 is None else str(prev_s2)
+                            st.markdown(
+                                f"""
+                                <div style="
+                                    margin-top:-4px;
+                                    margin-bottom:6px;
+                                    font-size:0.82rem;
+                                    color:#111827;
+                                    white-space:nowrap;
+                                    overflow-x:auto;
+                                    -webkit-overflow-scrolling:touch;
+                                ">
+                                    {_t1_inline} <span style="font-weight:800;">{_s1_txt}</span>
+                                    <span style="color:#6b7280;font-weight:600;"> vs </span>
+                                    <span style="font-weight:800;">{_s2_txt}</span> {_t2_inline}
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
 
 
                         # 1) 복식(2:2) → 사이드는 항상 수정 가능, 점수만 잠금
