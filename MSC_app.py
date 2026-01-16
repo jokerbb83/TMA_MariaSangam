@@ -817,6 +817,12 @@ def save_json(path, data):
     return True
 
 
+def _stable_md5(obj) -> str:
+    """JSON을 안정적으로 dump해서 md5를 만든다. (rerun 중 불필요한 저장/연산 방지용)"""
+    raw = json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.md5(raw.encode("utf-8")).hexdigest()
+
+
 
 def load_players():
     return load_json(PLAYERS_FILE, [])
@@ -840,12 +846,27 @@ def save_sessions(sessions):
     if READ_ONLY:
         return False
 
+    # ✅ rerun 중 동일 데이터로 반복 저장되는 걸 방지(로컬쓰기/깃허브커밋 모두 스킵)
+    _sessions_hash = None
+    try:
+        _sessions_hash = _stable_md5(sessions)
+        if st.session_state.get("_last_saved_sessions_hash") == _sessions_hash:
+            return True
+    except Exception:
+        _sessions_hash = None
+
+
     # 1) 로컬 파일 저장(로컬 실행 환경용)
     ok_local = True
     try:
         ok_local = bool(save_json(SESSIONS_FILE, sessions))
     except Exception:
         ok_local = False
+
+
+    # ✅ 저장 성공/실패와 무관하게, 같은 데이터로 반복 저장을 줄이기 위해 hash를 기록
+    if _sessions_hash is not None:
+        st.session_state["_last_saved_sessions_hash"] = _sessions_hash
 
     # 2) GitHub 저장(설정되어 있으면)
     repo = str(st.secrets.get("GITHUB_REPO", "")).strip()
@@ -910,6 +931,13 @@ def save_sessions(sessions):
         except Exception:
             # GitHub 저장이 실패해도 로컬 저장 결과는 유지
             pass
+
+    # ✅ 저장 성공으로 간주되면 마지막 저장 해시 갱신
+    try:
+        if _cur_hash is not None:
+            st.session_state['_last_saved_sessions_hash'] = _cur_hash
+    except Exception:
+        pass
 
     return ok_local
 
@@ -7220,11 +7248,21 @@ with tab3:
                     all_games = sorted(all_games, key=lambda x: x[0])  # ✅ idx 기준 정렬
                     render_score_inputs_block("전체 경기 스코어", all_games)
 
-                # 🔄 스코어 자동 저장
-                day_data["results"] = results
-                sessions[sel_date] = day_data
-                st.session_state.sessions = sessions
-                save_sessions(sessions)
+                # 🔄 스코어 자동 저장 (✅ 변경 있을 때만 저장해서 rerun 버벅임 최소화)
+                _res_hash_key = f"_last_results_hash__{sel_date}"
+                _new_res_hash = None
+                try:
+                    _new_res_hash = _stable_md5(results)
+                except Exception:
+                    _new_res_hash = None
+
+                if (_new_res_hash is None) or (st.session_state.get(_res_hash_key) != _new_res_hash):
+                    day_data["results"] = results
+                    sessions[sel_date] = day_data
+                    st.session_state.sessions = sessions
+                    save_sessions(sessions)
+                    if _new_res_hash is not None:
+                        st.session_state[_res_hash_key] = _new_res_hash
 
                 # -----------------------------
                 # 3) 실수 방지 체크 (5:5 무승부는 제외)
