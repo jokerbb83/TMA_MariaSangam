@@ -3102,42 +3102,49 @@ st.session_state["mobile_mode"] = mobile_mode
 
 MOBILE_SCORE_ROW_CSS = """
 <style>
-/* 모바일에서 점수/이름 줄을 한 줄로 고정 */
+/* 모바일에서 점수 입력 행(라디오+점수)을 한 줄(가로)로 최대한 유지 */
 @media (max-width: 768px) {
 
-    /* 한 게임(점수 줄) 컨테이너 */
-    .score-row {
-        display: flex;
-        flex-wrap: nowrap;
-        align-items: center;
-        gap: 0.25rem;
-        width: 100%;
+    /* ✅ Streamlit columns 래퍼가 자동으로 줄바꿈(wrap)되는 걸 방지 */
+    .score-row [data-testid="stHorizontalBlock"] {
+        flex-wrap: nowrap !important;
+        gap: 0.25rem !important;
+        align-items: center !important;
     }
 
-    /* score-row 안에 있는 각 column(이름, 점수, VS ...) */
+    /* 각 column 패딩 축소 */
     .score-row [data-testid="column"] {
-        flex: 0 0 auto !important;      /* 줄 바꿈 방지 */
-        padding-left: 0.1rem !important;
-        padding-right: 0.1rem !important;
+        padding-left: 0.08rem !important;
+        padding-right: 0.08rem !important;
     }
 
-    /* 드롭다운(점수) 사이즈 조금 줄이기 */
+    /* 드롭다운(점수) 더 컴팩트 */
     .score-row [data-baseweb="select"] {
-        min-width: 3.0rem;
-        font-size: 0.78rem;
-        min-height: 1.9rem;
+        min-width: 2.7rem !important;
+        max-width: 3.2rem !important;
+        font-size: 0.78rem !important;
     }
 
-    /* 이름 배지 너무 크지 않게 */
+    /* 라디오(사이드 선택) 줄간격/패딩 축소 */
+    .score-row div[role="radiogroup"] label {
+        margin: 0 !important;
+        padding: 0.10rem 0 !important;
+        line-height: 1.05 !important;
+    }
+
+    /* 이름 배지/텍스트 살짝 축소 */
     .score-row .name-badge,
     .score-row span {
-        font-size: 0.8rem;
+        font-size: 0.80rem !important;
     }
 }
-
 </style>
 """
 st.markdown(MOBILE_SCORE_ROW_CSS, unsafe_allow_html=True)
+
+
+
+
 
 
 if IS_OBSERVER:
@@ -6493,7 +6500,7 @@ with tab3:
                         }})();
                         </script>
                         """,
-                        height=75,
+                        height=90,
                     )
 
 
@@ -6734,7 +6741,7 @@ with tab3:
                         }})();
                         </script>
                         """,
-                        height=60,
+                        height=80,
                     )
 
 
@@ -7177,6 +7184,11 @@ with tab3:
                             idx_t1 = t1_side_options.index(default_t1)
                             idx_t2 = t2_side_options.index(default_t2)
 
+                            st.markdown(
+                                f"<div class='score-row' id='score-row-{sel_date}-{idx}'>",
+                                unsafe_allow_html=True,
+                            )
+
                             # 🔹 레이아웃: [왼쪽 라디오] [팀1 점수] [VS] [팀2 점수] [오른쪽 라디오]
                             if mobile_mode:
                                 col_t1_side, col_s1, col_vs, col_s2, col_t2_side = st.columns(
@@ -7250,6 +7262,9 @@ with tab3:
                                     format_func=gender_badge_label,  # 🔵/🔴 표시
                                     disabled=locked,
                                 )
+
+
+                            st.markdown("</div>", unsafe_allow_html=True)
 
                             def sides_from_choice(choice, p1, p2):
                                 if choice == "모름":
