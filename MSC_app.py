@@ -222,6 +222,25 @@ components.html(
 
     doc.querySelectorAll(SEL_SELECT).forEach(hardenSelect);
     doc.querySelectorAll(SEL_DATE).forEach(softenDate);
+
+    // ✅ 모바일: 점수 입력(라디오+점수+VS+점수+라디오) 한줄 고정
+    try {
+      const markers = doc.querySelectorAll('.score-row');
+      markers.forEach((m) => {
+        const md = m.closest('[data-testid="stMarkdown"]') || m.parentElement;
+        if (!md) return;
+        let hb = md.nextElementSibling;
+        let tries = 0;
+        while (hb && tries < 4 && hb.getAttribute('data-testid') !== 'stHorizontalBlock') {
+          hb = hb.nextElementSibling;
+          tries++;
+        }
+        if (hb && hb.getAttribute('data-testid') === 'stHorizontalBlock') {
+          hb.classList.add('msa-score-row-hb');
+        }
+      });
+    } catch (e) {}
+
   }
 
   patch();
@@ -306,6 +325,29 @@ st.markdown("""
   border-top:1px solid rgba(148,163,184,0.55);
   margin:14px 0;
 }
+
+
+/* ✅ 모바일: 점수 입력 row(라디오+점수+VS+점수+라디오) 한줄 고정 */
+.msa-score-row-hb{
+  flex-wrap: nowrap !important;
+  gap: 8px !important;
+}
+.msa-score-row-hb > div[data-testid="column"]{
+  min-width: 0 !important;
+}
+/* 점수 selectbox 폭 압축 */
+.msa-score-row-hb [data-testid="stSelectbox"],
+.msa-score-row-hb div[data-baseweb="select"]{
+  min-width: 72px !important;
+}
+.msa-score-row-hb [data-baseweb="select"] > div{
+  min-height: 40px !important;
+}
+/* 라디오 영역 너무 넓어지지 않게 */
+.msa-score-row-hb [data-testid="stRadio"]{
+  min-width: 0 !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
