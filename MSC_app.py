@@ -973,13 +973,13 @@ def _render_mobile_table_html(html: str, *, font_px: int = 11):
   }}
 
   /* ✅ 이름 뱃지(경기 요약/통계 표에서 폭 과다 사용 방지) */
-  #{sid} .name-badge {
+  #{sid} .name-badge {{
     padding: 2px 6px !important;
     margin-right: 3px !important;
     border-radius: 6px !important;
     font-size: 0.80rem !important;
     font-weight: 650 !important;
-  }
+  }}
   /* 인덱스/헤더가 한 글자씩 세로로 꺾이는 경우 방지 */
   #{sid} th {{
     max-width: none !important;
