@@ -6493,7 +6493,7 @@ with tab3:
                         }})();
                         </script>
                         """,
-                        height=50,
+                        height=70,
                     )
 
 
@@ -6734,7 +6734,7 @@ with tab3:
                         }})();
                         </script>
                         """,
-                        height=50,
+                        height=60,
                     )
 
 
