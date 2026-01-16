@@ -6331,6 +6331,7 @@ with tab3:
                         all_games_sum = games_A_sum + games_B_sum + games_other_sum
                         render_score_summary_table(all_games_sum, roster_by_name)
 
+                    st.markdown(f'<div id="{capture_id}__end"></div>', unsafe_allow_html=True)
 
 
                     # =========================================================
@@ -6492,7 +6493,7 @@ with tab3:
                         }})();
                         </script>
                         """,
-                        height=40,
+                        height=80,
                     )
 
 
@@ -6733,7 +6734,7 @@ with tab3:
                         }})();
                         </script>
                         """,
-                        height=40,
+                        height=80,
                     )
 
 
