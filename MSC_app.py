@@ -942,46 +942,86 @@ def save_sessions(sessions):
     return ok_local
 
 
+def _render_mobile_table_html(html: str, *, font_px: int = 11):
+    """모바일에서 표가 세로로 길어지는 문제(줄바꿈/패딩)를 줄이기 위한 정적 렌더"""
+    try:
+        import hashlib
+        sid = "mt_" + hashlib.md5(html.encode('utf-8')).hexdigest()[:10]
+    except Exception:
+        sid = "mt_static"
+
+    st.markdown(
+        f"""
+<style>
+  /* ✅ 모바일 표 최적화: 세로로 길게 쪼개지는 현상 방지 */
+  #{sid} {{
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }}
+  #{sid} table {{
+    width: max-content;
+    min-width: 100%;
+    border-collapse: collapse;
+    font-size: {font_px}px !important;
+    line-height: 1.15 !important;
+  }}
+  #{sid} th, #{sid} td {{
+    padding: 4px 6px !important;
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+    writing-mode: horizontal-tb !important;
+  }}
+  /* 인덱스/헤더가 한 글자씩 세로로 꺾이는 경우 방지 */
+  #{sid} th {{
+    max-width: none !important;
+  }}
+</style>
+<div id="{sid}" class="mobile-table-wrap">{html}</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_static_on_mobile(df_or_styler):
     mobile_mode = st.session_state.get("mobile_mode", False)
 
     if mobile_mode:
-        # ✅ 모바일: 드래그/정렬/스크롤 인터랙션 없는 정적 렌더
+        # ✅ 모바일: 드래그/정렬/스크롤 인터랙션 없는 정적 렌더 + 세로 길이 최적화
         try:
             html = df_or_styler.to_html()
-            st.markdown(html, unsafe_allow_html=True)
+            _render_mobile_table_html(html, font_px=11)
         except Exception:
             st.table(df_or_styler)
     else:
         # ✅ PC: 기존대로 인터랙티브
         st.dataframe(df_or_styler, use_container_width=True)
 
+
 def is_mobile():
-        return st.session_state.get("mobile_mode", False)
+    return st.session_state.get("mobile_mode", False)
 
 
 def smart_table(df_or_styler, *, use_container_width=True):
-        """
-        ✅ PC: 기존처럼 인터랙티브 dataframe
-        ✅ 모바일: 열 드래그/정렬 등 인터랙션 없는 '고정 표'
-        """
-        if is_mobile():
-                # 1) Styler면 HTML로 정적 렌더
-                try:
-                        html = df_or_styler.to_html()
-                        st.markdown(html, unsafe_allow_html=True)
-                        return
-                except Exception:
-                        pass
+    """
+    ✅ PC: 기존처럼 인터랙티브 dataframe
+    ✅ 모바일: 열 드래그/정렬 등 인터랙션 없는 '고정 표' (세로 길이 최적화)
+    """
+    if is_mobile():
+        # 1) Styler면 HTML로 정적 렌더
+        try:
+            html = df_or_styler.to_html()
+            _render_mobile_table_html(html, font_px=11)
+            return
+        except Exception:
+            pass
 
-                # 2) 일반 DataFrame이면 정적 table
-                try:
-                        st.table(df_or_styler)
-                except Exception:
-                        # 혹시 모르니 마지막 안전망
-                        st.write(df_or_styler)
-        else:
-                st.dataframe(df_or_styler, use_container_width=use_container_width)
+        # 2) 일반 DataFrame이면 정적 table
+        try:
+            st.table(df_or_styler)
+        except Exception:
+            st.write(df_or_styler)
+    else:
+        st.dataframe(df_or_styler, use_container_width=use_container_width)
 
 
 # ---------------------------------------------------------
