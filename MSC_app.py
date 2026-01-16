@@ -8272,7 +8272,7 @@ with tab4:
 
                         sty_vs = colorize_df_names(df_vs, roster_by_name, ["상대"])
                         sty_vs = sty_vs.format({"승률": "{:.1f}%"})
-                        st.dataframe(sty_vs, use_container_width=True)
+                        smart_table(sty_vs, use_container_width=True)
                     else:
                         st.info("상대 기록이 없습니다.")
                 else:
@@ -8305,7 +8305,7 @@ with tab4:
 
                         sty_pt = colorize_df_names(df_pt, roster_by_name, ["파트너"])
                         sty_pt = sty_pt.format({"승률": "{:.1f}%"})
-                        st.dataframe(sty_pt, use_container_width=True)
+                        smart_table(sty_pt, use_container_width=True)
                     else:
                         st.info("파트너 기록이 없습니다.")
                 else:
@@ -8621,7 +8621,7 @@ with tab5:
                             st.info("표시할 데이터가 없습니다.")
                         else:
                             sty_rank = colorize_df_names(rank_df, roster_by_name, ["이름"])
-                            st.dataframe(sty_rank, use_container_width=True)
+                            smart_table(sty_rank, use_container_width=True)
 
                     else:
                         # ✅ 조별보기: 집계는 동일(recs_all), 선수만 A/B로 나누기
@@ -8636,13 +8636,13 @@ with tab5:
                             has_any = True
                             st.markdown("### 🟥 A조 월간 선수 순위표")
                             sty_A = colorize_df_names(rank_df_A, roster_by_name, ["이름"])
-                            st.dataframe(sty_A, use_container_width=True)
+                            smart_table(sty_A, use_container_width=True)
 
                         if rank_df_B is not None:
                             has_any = True
                             st.markdown("### 🟦 B조 월간 선수 순위표")
                             sty_B = colorize_df_names(rank_df_B, roster_by_name, ["이름"])
-                            st.dataframe(sty_B, use_container_width=True)
+                            smart_table(sty_B, use_container_width=True)
 
                         if not has_any:
                             st.info("A조 / B조로 나눠서 표시할 데이터가 없습니다.")
