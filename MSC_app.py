@@ -8496,9 +8496,6 @@ with tab4:
 with tab5:
     section_card("월별 통계", "📆")
 
-
-
-
     if not sessions:
         st.info("저장된 기록이 없습니다.")
     else:
@@ -8525,15 +8522,6 @@ with tab5:
             key="sel_month",
         )
 
-
-
-
-
-
-        if not months:
-            st.info("월별로 표시할 기록이 없습니다.")
-        else:
-            sel_month = st.selectbox("월 선택 (YYYY-MM)", months, index=len(months) - 1)
 
             # ---------------------------------------------------------
             # 1) 이 달의 게임 모으기 (스페셜 매치 제외)
