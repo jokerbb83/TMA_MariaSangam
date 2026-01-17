@@ -4176,8 +4176,11 @@ def render_tab_today_session(tab):
         def _make_on_change_validator(r: int, key: str, court_count: int, gtype: str):
             def _cb():
                 cur = st.session_state.get(key, "선택")
+
+                # ✅ 사용자가 직접 만지면(선택/해제) 해당 슬롯은 '수동 잠금'으로 간주 → auto 플래그 해제
                 if not cur or cur == "선택":
                     st.session_state[f"_prev_{key}"] = "선택"
+                    st.session_state[f"_auto_{key}"] = False
                     return
 
                 # 같은 라운드 내 중복 선택 방지
@@ -4189,6 +4192,7 @@ def render_tab_today_session(tab):
                         return
 
                 st.session_state[f"_prev_{key}"] = cur
+                st.session_state[f"_auto_{key}"] = False
 
             return _cb
 
@@ -4260,21 +4264,23 @@ def render_tab_today_session(tab):
             except Exception:
                 return None
 
-        def _pick_by_ntrp_closest(cands, target_ntrp):
+        def _pick_by_ntrp_closest(cands, target_ntrp, rng=None):
+            """target_ntrp에 가장 가까운 후보를 선택. rng를 주면 그 RNG를 사용."""
             if not cands:
                 return None
+            rng = rng or random
             if target_ntrp is None:
-                return random.choice(cands)
+                return rng.choice(cands)
 
             scored = []
             for p in cands:
                 pn = _ntrp_of(p)
                 if pn is None:
-                    scored.append((9999.0, random.random(), p))
+                    scored.append((9999.0, rng.random(), p))
                 else:
-                    scored.append((abs(pn - target_ntrp), random.random(), p))
+                    scored.append((abs(pn - target_ntrp), rng.random(), p))
             scored.sort(key=lambda x: (x[0], x[1]))
-            return scored[0][2] if scored else random.choice(cands)
+            return scored[0][2] if scored else rng.choice(cands)
 
         def _build_filtered_options_for_key(r: int, k: str, pool, court_count: int, gtype: str):
             current = _get_manual_value(k)
@@ -4361,12 +4367,25 @@ def render_tab_today_session(tab):
             gender_mode: str,  # "랜덤" / "동성" / "혼합"
             ntrp_on: bool,
             target_courts=None,  # ex) [1,3] 처럼 특정 코트만 채우고 싶을 때
+            seed_base: int | None = None,
         ):
-            plan = {}
+            """수동 입력의 빈칸을 자동 채움.
 
-            keys_round = _manual_all_keys_for_round(r, court_count, gtype)
-            fixed = {k: _get_manual_value(k) for k in keys_round}
-            used = {v for v in fixed.values() if v and v != "선택"}
+            ✅ 이번 버전 핵심:
+            - 사용자가 직접 고른 값(=auto 플래그 False)은 '고정'으로 유지
+            - 자동으로 채워졌던 값(=auto 플래그 True)은 다음 '빈칸 채우기' 때 다시 랜덤으로 갈아끼움
+            - target_courts가 있으면 그 코트만 변경하되, 같은 라운드 내 중복 방지는 유지(다른 코트의 값은 used로 처리)
+            """
+            plan = {}
+            auto_keys = set()
+
+            # ✅ 이번 클릭마다 결과가 달라지게: seed_base를 넣으면 round별로 로컬 RNG 사용
+            if seed_base is None:
+                seed_base = int(random.random() * 1_000_000_000)
+            rng = random.Random(int(seed_base) + int(r) * 7919)
+
+            def _is_auto(k: str) -> bool:
+                return bool(st.session_state.get(f"_auto_{k}", False))
 
             # ✅ 특정 코트만 채우기(체크된 게임만 등)
             _target = None
@@ -4376,9 +4395,15 @@ def render_tab_today_session(tab):
                 except Exception:
                     _target = None
 
+            # 현재 라운드 모든 값
+            keys_round = _manual_all_keys_for_round(r, court_count, gtype)
+            cur_map = {k: _get_manual_value(k) for k in keys_round}
+
+            # used에는 '변경되지 않을 값'만 먼저 넣는다.
+            used = set()
+
             for c in range(1, int(court_count) + 1):
-                if _target is not None and int(c) not in _target:
-                    continue
+                is_target_court = (_target is None) or (int(c) in _target)
 
                 grp_tag = _court_group_tag(view_mode, c)
                 pool = _pool_by_group(players_selected, grp_tag)
@@ -4386,60 +4411,102 @@ def render_tab_today_session(tab):
                 if gtype == "단식":
                     k1 = _manual_key(r, c, 1, gtype)
                     k2 = _manual_key(r, c, 2, gtype)
-                    v1 = fixed.get(k1, "선택")
-                    v2 = fixed.get(k2, "선택")
+                    v1 = cur_map.get(k1, "선택")
+                    v2 = cur_map.get(k2, "선택")
 
-                    if v1 != "선택" and v2 != "선택":
+                    if not is_target_court:
+                        # 대상 코트가 아니면 현재값 유지(수동/자동 상관없이)
+                        if v1 != "선택":
+                            used.add(v1); plan.setdefault(k1, v1)
+                        if v2 != "선택":
+                            used.add(v2); plan.setdefault(k2, v2)
+                        continue
+
+                    # ✅ 대상 코트면: 수동으로 고정된 값만 유지, 자동 채움 값은 "선택"으로 간주(교체)
+                    keep1 = (v1 != "선택" and (not _is_auto(k1)))
+                    keep2 = (v2 != "선택" and (not _is_auto(k2)))
+                    v1_eff = v1 if keep1 else "선택"
+                    v2_eff = v2 if keep2 else "선택"
+
+                    if keep1:
+                        used.add(v1); plan.setdefault(k1, v1)
+                    if keep2:
+                        used.add(v2); plan.setdefault(k2, v2)
+
+                    # 둘 다 수동 고정이면 끝
+                    if v1_eff != "선택" and v2_eff != "선택":
                         continue
 
                     avail = [p for p in pool if p not in used]
 
-                    if v1 != "선택" and v2 == "선택":
+                    if v1_eff != "선택" and v2_eff == "선택":
                         cand = avail
                         if gender_mode == "동성":
-                            g1 = _gender_of(v1)
+                            g1 = _gender_of(v1_eff)
                             cand = [p for p in cand if _gender_of(p) == g1]
-                        pick = _pick_by_ntrp_closest(cand, _ntrp_of(v1)) if ntrp_on else (random.choice(cand) if cand else None)
+                        pick = _pick_by_ntrp_closest(cand, _ntrp_of(v1_eff), rng=rng) if ntrp_on else (rng.choice(cand) if cand else None)
                         if pick:
                             plan[k2] = pick
                             used.add(pick)
+                            auto_keys.add(k2)
                         continue
 
-                    if v1 == "선택" and v2 != "선택":
+                    if v1_eff == "선택" and v2_eff != "선택":
                         cand = avail
                         if gender_mode == "동성":
-                            g2 = _gender_of(v2)
+                            g2 = _gender_of(v2_eff)
                             cand = [p for p in cand if _gender_of(p) == g2]
-                        pick = _pick_by_ntrp_closest(cand, _ntrp_of(v2)) if ntrp_on else (random.choice(cand) if cand else None)
+                        pick = _pick_by_ntrp_closest(cand, _ntrp_of(v2_eff), rng=rng) if ntrp_on else (rng.choice(cand) if cand else None)
                         if pick:
                             plan[k1] = pick
                             used.add(pick)
+                            auto_keys.add(k1)
                         continue
 
-                    if v1 == "선택" and v2 == "선택":
+                    if v1_eff == "선택" and v2_eff == "선택":
                         cand = avail
                         if len(cand) >= 2:
                             if ntrp_on:
-                                a = random.choice(cand)
+                                a = rng.choice(cand)
                                 cand2 = [x for x in cand if x != a]
-                                b = _pick_by_ntrp_closest(cand2, _ntrp_of(a))
+                                b = _pick_by_ntrp_closest(cand2, _ntrp_of(a), rng=rng)
                                 if b:
                                     plan[k1], plan[k2] = a, b
                                     used.update([a, b])
+                                    auto_keys.update([k1, k2])
                             else:
-                                a, b = random.sample(cand, 2)
+                                a, b = rng.sample(cand, 2)
                                 plan[k1], plan[k2] = a, b
                                 used.update([a, b])
+                                auto_keys.update([k1, k2])
                     continue
 
                 # ---------------- 복식 ----------------
                 ks = [_manual_key(r, c, i, gtype) for i in (1, 2, 3, 4)]
-                vs = [fixed.get(k, "선택") for k in ks]
-                empty_keys = [k for k, v in zip(ks, vs) if v == "선택"]
+                vs = [cur_map.get(k, "선택") for k in ks]
+
+                if not is_target_court:
+                    # 대상 코트가 아니면 현재값 유지
+                    for k, v in zip(ks, vs):
+                        if v != "선택":
+                            used.add(v)
+                            plan.setdefault(k, v)
+                    continue
+
+                # ✅ 대상 코트면: 수동 고정만 유지, 자동 채움은 빈칸으로 간주(교체)
+                keep_mask = [(v != "선택" and (not _is_auto(k))) for k, v in zip(ks, vs)]
+                eff_vs = [v if keep else "선택" for v, keep in zip(vs, keep_mask)]
+
+                for k, v, keep in zip(ks, vs, keep_mask):
+                    if keep and v != "선택":
+                        used.add(v)
+                        plan.setdefault(k, v)
+
+                empty_keys = [k for k, v in zip(ks, eff_vs) if v == "선택"]
                 if not empty_keys:
                     continue
 
-                already = [v for v in vs if v != "선택"]
+                already = [v for v in eff_vs if v != "선택"]
                 avail = [p for p in pool if p not in used]
                 men = [p for p in avail if _gender_of(p) == "남"]
                 women = [p for p in avail if _gender_of(p) == "여"]
@@ -4456,16 +4523,16 @@ def render_tab_today_session(tab):
                         want_w = (already_w + sum(1 for x in picks if _gender_of(x) == "여")) < 2
 
                         if want_m and men:
-                            pick = random.choice(men) if not ntrp_on else _pick_by_ntrp_closest(men, None)
+                            pick = rng.choice(men) if not ntrp_on else _pick_by_ntrp_closest(men, None, rng=rng)
                             men.remove(pick)
                         elif want_w and women:
-                            pick = random.choice(women) if not ntrp_on else _pick_by_ntrp_closest(women, None)
+                            pick = rng.choice(women) if not ntrp_on else _pick_by_ntrp_closest(women, None, rng=rng)
                             women.remove(pick)
                         else:
                             rest = men + women
                             if not rest:
                                 break
-                            pick = random.choice(rest) if not ntrp_on else _pick_by_ntrp_closest(rest, None)
+                            pick = rng.choice(rest) if not ntrp_on else _pick_by_ntrp_closest(rest, None, rng=rng)
                             if pick in men:
                                 men.remove(pick)
                             else:
@@ -4477,27 +4544,20 @@ def render_tab_today_session(tab):
                     already_gender = _gender_of(already[0]) if already else None
                     cand = men if already_gender == "남" else women if already_gender == "여" else (men if len(men) >= need else women)
                     if len(cand) >= need:
-                        picks = random.sample(cand, need)
+                        picks = rng.sample(cand, need)
 
                 else:
                     rest = men + women
                     if len(rest) >= need:
-                        picks = random.sample(rest, need)
+                        picks = rng.sample(rest, need)
 
                 for k, p in zip(empty_keys, picks):
                     plan[k] = p
                     used.add(p)
+                    auto_keys.add(k)
 
-            # ✅ 기존 값 유지
-            for k, v in fixed.items():
-                if v and v != "선택":
-                    plan.setdefault(k, v)
+            return plan, auto_keys
 
-            return plan
-
-        # =========================================================
-        # ✅ 조별 분리 대진 생성용 헬퍼
-        # =========================================================
         def _split_players_ab(players, roster_by_name):
             a = [p for p in players if roster_by_name.get(p, {}).get("group") == "A조"]
             b = [p for p in players if roster_by_name.get(p, {}).get("group") == "B조"]
@@ -5727,14 +5787,30 @@ def render_tab_today_session(tab):
                 st.caption("체크된 게임만 자동 채우기/초기화는 아래에서 가능")
 
             # ✅ plan을 '바로' state에 반영 (pending/rerun 제거)
-            def _apply_plan_to_state(plan: dict):
+            # ✅ plan을 '바로' state에 반영 (pending/rerun 제거)
+            def _apply_plan_to_state(plan: dict, auto_keys=None):
+                """plan을 session_state에 반영.
+
+                auto_keys:
+                  - 이번 자동 채우기로 "자동으로 들어간 슬롯"의 key set
+                  - 이 key들은 다음 "빈칸 채우기" 때 다시 랜덤으로 교체 대상이 됨
+                
+                ✅ 중요: 체크된 게임만 채우기처럼 "일부 코트"만 갱신할 때는
+                갱신 대상이 아닌 코트의 기존 auto 플래그는 그대로 유지해야 함.
+                그래서 auto_keys에 포함된 것만 True로 찍고, 나머지는 강제로 False로 만들지 않음.
+                """
                 if not isinstance(plan, dict):
                     return
+                auto_keys = set(auto_keys or [])
                 for k, v in plan.items():
                     if v and v != "선택":
                         st.session_state[k] = v
                         st.session_state[f"_prev_{k}"] = v
-
+                        if k in auto_keys:
+                            st.session_state[f"_auto_{k}"] = True
+                        else:
+                            if f"_auto_{k}" not in st.session_state:
+                                st.session_state[f"_auto_{k}"] = False
             # -------------------------
             # 전체 초기화
             # -------------------------
@@ -5743,16 +5819,25 @@ def render_tab_today_session(tab):
                     for k in _manual_all_keys_for_round(rr, court_count, gtype):
                         st.session_state[k] = "선택"
                         st.session_state[f"_prev_{k}"] = "선택"
+                        st.session_state[f"_auto_{k}"] = False
                 st.session_state.pop("_manual_pending_set", None)  # 혹시 남아있던 거 제거
 
             # -------------------------
             # 전체 라운드 빈칸 채우기
+            #   - ✅ 사용자가 직접 고른 값은 유지
+            #   - ✅ 이전에 자동으로 들어간 값은 이번 클릭에서 다시 랜덤으로 갈아끼움
             # -------------------------
             if fill_all_clicked and players_selected:
-                plan_all = {}
                 gm = _manual_gender_to_mode(manual_gender_mode)
+
+                # ✅ 버튼 누를 때마다 결과가 달라지게
+                seed_base = int(random.random() * 1_000_000_000)
+                st.session_state["_manual_fill_seed"] = seed_base
+
+                plan_all = {}
+                auto_all = set()
                 for rr in range(1, int(total_rounds) + 1):
-                    plan_r = _fill_round_plan(
+                    plan_r, auto_r = _fill_round_plan(
                         r=rr,
                         players_selected=players_selected,
                         court_count=court_count,
@@ -5760,15 +5845,16 @@ def render_tab_today_session(tab):
                         view_mode=view_mode_for_schedule,
                         gender_mode=gm,
                         ntrp_on=bool(manual_fill_ntrp),
+                        seed_base=seed_base,
                     )
                     plan_all.update(plan_r)
+                    auto_all |= set(auto_r or [])
 
                 if plan_all:
-                    _apply_plan_to_state(plan_all)
+                    _apply_plan_to_state(plan_all, auto_all)
                 else:
                     st.info("이미 채울 빈칸이 없어.")
 
-            # -------------------------
             # ✅ 게임 UI (라운드 구분 없이 나열 + 체크된 게임만 처리)
             # -------------------------
 
@@ -5831,10 +5917,15 @@ def render_tab_today_session(tab):
                     for k in keys:
                         st.session_state[k] = "선택"
                         st.session_state[f"_prev_{k}"] = "선택"
+                        st.session_state[f"_auto_{k}"] = False
 
             # ✅ 체크된 게임 빈칸 채우기
             if fill_checked_clicked and players_selected and selected_games:
                 gm = _manual_gender_to_mode(manual_gender_mode)
+
+                # ✅ 버튼 누를 때마다 결과가 달라지게
+                seed_base = int(random.random() * 1_000_000_000)
+                st.session_state["_manual_fill_seed"] = seed_base
 
                 # 라운드별로 묶어서, 체크된 코트만 채우기 (라운드 내 중복 방지 유지)
                 by_round = {}
@@ -5842,8 +5933,9 @@ def render_tab_today_session(tab):
                     by_round.setdefault(int(rr), []).append(int(cc))
 
                 plan_all = {}
+                auto_all = set()
                 for rr, c_list in by_round.items():
-                    plan_r = _fill_round_plan(
+                    plan_r, auto_r = _fill_round_plan(
                         r=int(rr),
                         players_selected=players_selected,
                         court_count=court_count,
@@ -5852,11 +5944,13 @@ def render_tab_today_session(tab):
                         gender_mode=gm,
                         ntrp_on=bool(manual_fill_ntrp),
                         target_courts=c_list,
+                        seed_base=seed_base,
                     )
                     plan_all.update(plan_r)
+                    auto_all |= set(auto_r or [])
 
                 if plan_all:
-                    _apply_plan_to_state(plan_all)
+                    _apply_plan_to_state(plan_all, auto_all)
                 else:
                     st.info("체크된 게임에서 채울 빈칸이 없어.")
 
