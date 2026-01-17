@@ -193,12 +193,11 @@ components.html(
 <script>
 (function(){
   const win = window.parent || window;
-  const doc = win.document;
   function isMobile(){
     try{
       return win.matchMedia('(max-width: 900px)').matches || /Android|iPhone|iPad|iPod/i.test(win.navigator.userAgent);
     }catch(e){
-      return /Android|iPhone|iPad|iPod/i.test((win.navigator && win.navigator.userAgent) || '');
+      return /Android|iPhone|iPad|iPod/i.test(((win.navigator&&win.navigator.userAgent)||''));
     }
   }
   const desired = isMobile() ? '1' : '0';
@@ -206,18 +205,23 @@ components.html(
     const url = new URL(win.location.href);
     const cur = url.searchParams.get('mm');
 
-    // ✅ 무한 리로드 방지(세션 내에서 마지막 상태 기록)
-    const k = 'msc_mm_last';
+    // ✅ 무한 리로드 방지: 같은 값으로는 1회만 교정
+    const k = 'msc_mm_fix_once';
     const last = win.sessionStorage ? win.sessionStorage.getItem(k) : null;
+    const stamp = String(cur) + '->' + desired;
 
-    if (cur !== desired && last !== desired) {
-      if (win.sessionStorage) win.sessionStorage.setItem(k, desired);
+    if (cur !== desired && last !== stamp) {
+      if (win.sessionStorage) win.sessionStorage.setItem(k, stamp);
       url.searchParams.set('mm', desired);
       win.history.replaceState({}, '', url.toString());
       win.location.reload();
       return;
     }
-    if (win.sessionStorage) win.sessionStorage.setItem(k, desired);
+
+    // cur==desired이면 다음 교정을 위해 초기화
+    if (cur === desired && win.sessionStorage) {
+      win.sessionStorage.removeItem(k);
+    }
   }catch(e){}
 })();
 </script>
