@@ -223,7 +223,8 @@ MOBILE_AUTO = _detect_mobile_from_qp()
 st.set_page_config(
     page_title=APP_TITLE,
     # ✅ PC는 centered(가로 폭 제한), 모바일은 wide(전체 폭)
-    layout=("wide" if (IS_OBSERVER or MOBILE_AUTO) else "centered"),
+    # - 스코어보드/옵저버도 PC로 열면 관리자 PC 레이아웃처럼 보여야 함
+    layout=("wide" if MOBILE_AUTO else "centered"),
     initial_sidebar_state="collapsed",
 )
 
@@ -316,7 +317,7 @@ MSC_RESPONSIVE_WIDTH_CSS = """
 """
 
 # body에 모드 클래스 부여
-msc_body_cls = "msc-mobile" if (IS_OBSERVER or MOBILE_AUTO) else "msc-desktop"
+msc_body_cls = "msc-mobile" if MOBILE_AUTO else "msc-desktop"
 components.html(
     f"""
 <script>
@@ -3472,11 +3473,9 @@ roster_by_name = {p["name"]: p for p in roster}
 st.title(f"🎾 {APP_TITLE}")
 
 # ✅ PC/모바일 자동 감지: JS가 ?msc_mobile=1/0 를 세팅함
-# - 옵저버/스코어보드: 무조건 모바일 최적화
-if IS_OBSERVER:
-    mobile_mode = True
-else:
-    mobile_mode = bool(MOBILE_AUTO)
+# - 스코어보드/옵저버도 "기기" 기준으로만 분기해야
+#   PC에서는 관리자 PC 레이아웃처럼 보임
+mobile_mode = bool(MOBILE_AUTO)
 st.session_state["mobile_mode"] = mobile_mode
 
 
