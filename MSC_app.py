@@ -716,7 +716,7 @@ def build_daily_report(sel_date, day_data):
     """
     선택된 날짜(sel_date)에 대한 '오늘의 요약 리포트'용 문장 리스트 생성.
     - 출석 인원 / 점수 입력된 경기 수
-    - 승점왕 / 공동 승점왕
+    - MVP / 공동 MVP
     - 무패 선수
     - 상대를 0점으로 이긴 셧아웃 최다 선수
     """
@@ -823,13 +823,13 @@ def build_daily_report(sel_date, day_data):
             who = best_players[0]
             r = recs[who]
             lines.append(
-                f"오늘의 승점왕: {who} (승점 {best_points}점, {r['W']}승 {r['D']}무 {r['L']}패)"
+                f"오늘의 MVP: {who} (승점 {best_points}점, {r['W']}승 {r['D']}무 {r['L']}패)"
             )
         else:
             names_str = ", ".join(best_players)
             example = recs[best_players[0]]
             lines.append(
-                f"오늘의 공동 승점왕: {names_str} (모두 승점 {best_points}점, 예: {example['W']}승 {example['D']}무 {example['L']}패)"
+                f"오늘의 공동 MVP: {names_str} (모두 승점 {best_points}점, 예: {example['W']}승 {example['D']}무 {example['L']}패)"
             )
 
     # 3) 무패 선수
@@ -1910,20 +1910,29 @@ def get_daily_fortune(sel_player):
         "오늘 스텝이 좀 꼬인다 싶으면 그냥 달리기로 승부해라. 테니스는 발 빠른 놈이 장땡이다."
         "스코어가 기억 안 나면 당당하게 너한테 유리하게 불러라. 확신에 찬 목소리는 진실보다 강하다."
         "세게 후려치고 싶은 순간 딱 힘을 30%만 빼라. 그럼 마법처럼 베이스라인 안쪽에 뚝 떨어진다."
-        "오늘 너의 럭키 존은 **'센터'**다. 멋 부리려고 앵글 샷 날리다 홈런 치지 말고, 그냥 가운데만 파라. 그게 이기는 길이다."
+        "오늘 너의 럭키 존은 '센터'다. 멋 부리려고 앵글 샷 날리다 홈런 치지 말고, 그냥 가운데만 파라. 그게 이기는 길이다."
         "리턴할 때 다운더라인 쳐다보지도 마라. 오늘 넌 조코비치가 아니다. 얌전히 크로스로 넘겨라."
-        "오늘 발리는 **'프라이팬'**이다. 라켓을 휘두르지 말고 면만 만들어라. 넌 공을 요리할 수 있다."
+        "오늘 발리는 '프라이팬'이다. 라켓을 휘두르지 말고 면만 만들어라. 넌 공을 요리할 수 있다."
         "준비 자세(스플릿 스텝) 없이 공을 치는 건 무면허 운전이다. 콩콩 뛰는 만큼 승률이 올라간다."
         "게임이 안 풀리면 라켓 줄(스트링)을 심각하게 만지작거려라. 고수들은 다 그렇게 멘탈 잡는다. 일단 있어 보인다."
         "파트너가 앞에서 알짱거려도 참아라. 홧김에 맞추면 치료비가 더 나온다. 인내심이 돈 버는 거다."
         "상대가 못 친 게 아니라 네가 공을 잘 준 거다. 착각은 자유고, 그 착각이 오늘의 자신감을 만든다."
         "기합 소리는 실력과 무관하다. 하지만 샤라포바처럼 지르면 상대가 쫄아서 실수한다. 소리로 제압해라."
         "신발 끈 꽉 묶어라. 오늘 네가 공을 쫓아다니는 게 아니라, 공이 널 피해 다닐 운명이다. 미친 듯이 뛰어야 산다."
+        "백핸드 슬라이스 자제해라. 멋있게 깔리는 게 아니라 네트에 처박힐 운명이다. 그냥 쳐라."
+        "어려운 공 멋있게 치려 하지 마라. 관중석엔 아무도 없다. **'개폼'**이라도 넘기는 놈이 승자다."
+        "공을 째려봐라. 네 눈빛에 공이 쫄아서 라인 안으로 들어간다. 끝까지 보는 게 이기는 거다."
+        "오늘은 토스가 전부다. 토스만 일정해도 너는 오늘 코트의 지배자다. 공 띄우는 손에 영혼을 실어라."
+        "상대가 네트 앞에 있으면 무조건 로브다. 키 넘기는 순간 상대의 멘탈도 같이 넘어간다."
+        "발리는 손맛이 아니라 발맛이다. 공이 오면 라켓보다 발이 먼저 마중 나가게 해라."
+        "라인 시비가 붙으면 목소리 깔고 단호하게 말해라. 원래 테니스는 확신범이 이기는 게임이다."
+        "숨이 턱 끝까지 차오르면 신발끈 묶는 척해라. 아무도 모른다. 그 30초가 너를 살린다."
+        "상대가 잘 치면 '운 좋네'라고 중얼거려라. 상대의 실력을 운으로 치부하는 것, 그게 바로 멘탈 방어다."
     ]
 
 
     chosung = list("ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅎ")
-    rackets = ["윌슨", "요넥스", "헤드", "바볼랏", "던롭", "뵐클", "테크니파이버", "프린스"]
+    rackets = ["윌슨", "요넥스", "헤드", "바볼랏", "던롭"]
     ages = ["20대", "30대", "40대", "50대"]
     hands = ["오른손", "왼손"]
     proplayer = ["페더러","나달","조코비치","야닉시너","알카라즈","손흥민","메시","마이클조던","오타니","이재용","젠슨황","무하마드 알리","타이거 우즈","도널드 트럼프","일론 머스크","샤라포바"]
@@ -4306,6 +4315,7 @@ def render_tab_today_session(tab):
             view_mode: str,
             gender_mode: str,  # "랜덤" / "동성" / "혼합"
             ntrp_on: bool,
+            target_courts=None,  # ex) [1,3] 처럼 특정 코트만 채우고 싶을 때
         ):
             plan = {}
 
@@ -4313,7 +4323,18 @@ def render_tab_today_session(tab):
             fixed = {k: _get_manual_value(k) for k in keys_round}
             used = {v for v in fixed.values() if v and v != "선택"}
 
+            # ✅ 특정 코트만 채우기(체크된 게임만 등)
+            _target = None
+            if target_courts is not None:
+                try:
+                    _target = set(int(x) for x in target_courts)
+                except Exception:
+                    _target = None
+
             for c in range(1, int(court_count) + 1):
+                if _target is not None and int(c) not in _target:
+                    continue
+
                 grp_tag = _court_group_tag(view_mode, c)
                 pool = _pool_by_group(players_selected, grp_tag)
 
@@ -5658,7 +5679,7 @@ def render_tab_today_session(tab):
                 st.markdown("</div>", unsafe_allow_html=True)
 
             with b3:
-                st.caption("라운드별 자동 채우기/초기화는 아래 라운드 박스에서도 가능")
+                st.caption("체크된 게임만 자동 채우기/초기화는 아래에서 가능")
 
             # ✅ plan을 '바로' state에 반영 (pending/rerun 제거)
             def _apply_plan_to_state(plan: dict):
@@ -5703,82 +5724,131 @@ def render_tab_today_session(tab):
                     st.info("이미 채울 빈칸이 없어.")
 
             # -------------------------
-            # 라운드 UI
+            # ✅ 게임 UI (라운드 구분 없이 나열 + 체크된 게임만 처리)
             # -------------------------
-            for r in range(1, int(total_rounds) + 1):
-                with st.expander(f"라운드 {r}", expanded=(r == 1)):
 
-                    used = _round_used_set(r, court_count, gtype)
+            # 게임 목록(라운드/코트 기반) → 화면은 라운드 구분 없이 "게임 번호"로만 보여줌
+            games = []  # [(game_no, r, c)]
+            gno = 0
+            for rr in range(1, int(total_rounds) + 1):
+                for cc in range(1, int(court_count) + 1):
+                    gno += 1
+                    games.append((gno, rr, cc))
 
-                    top1, top2, top3 = st.columns([3.2, 3.2, 1.6], vertical_alignment="center")
+            # ✅ 체크박스 키 정리(라운드/코트 수가 바뀌면 오래된 체크 제거)
+            valid_chk = {f"chk_game_{gno}" for (gno, _r, _c) in games}
+            for k in list(st.session_state.keys()):
+                if isinstance(k, str) and k.startswith("chk_game_") and k not in valid_chk:
+                    st.session_state.pop(k, None)
 
-                    with top1:
-                        st.markdown('<div class="main-primary-btn">', unsafe_allow_html=True)
-                        fill_round_clicked = st.button(
-                            "이 라운드 빈칸 채우기",
-                            use_container_width=True,
-                            key=f"btn_fill_round_{r}",
-                        )
-                        st.markdown("</div>", unsafe_allow_html=True)
+            # ✅ 전체 초기화 눌렀으면 체크도 같이 해제
+            if clear_all_clicked:
+                for k in valid_chk:
+                    st.session_state[k] = False
 
-                    with top2:
-                        st.markdown('<div class="main-danger-btn">', unsafe_allow_html=True)
-                        clear_round_clicked = st.button(
-                            "이 라운드 초기화",
-                            use_container_width=True,
-                            key=f"btn_clear_round_{r}",
-                        )
-                        st.markdown("</div>", unsafe_allow_html=True)
+            # ✅ 체크된 게임 집계
+            selected_games = [(rr, cc) for (gno, rr, cc) in games if st.session_state.get(f"chk_game_{gno}", False)]
 
-                    with top3:
-                        st.markdown(
-                            f"<div style='text-align:right; font-weight:700; color:#374151;'>선택됨: {len(used)}명</div>",
-                            unsafe_allow_html=True
-                        )
+            # ✅ 체크된 게임용 버튼
+            t1, t2, t3 = st.columns([3.2, 3.2, 1.6], vertical_alignment="center")
+            with t1:
+                st.markdown('<div class="main-primary-btn">', unsafe_allow_html=True)
+                fill_checked_clicked = st.button(
+                    "체크된 게임만 빈칸 채우기",
+                    use_container_width=True,
+                    key="btn_fill_checked_games",
+                    disabled=(not players_selected),
+                )
+                st.markdown("</div>", unsafe_allow_html=True)
 
-                    # ✅ 이 라운드 초기화
-                    if clear_round_clicked:
-                        for k in _manual_all_keys_for_round(r, court_count, gtype):
-                            st.session_state[k] = "선택"
-                            st.session_state[f"_prev_{k}"] = "선택"
+            with t2:
+                st.markdown('<div class="main-danger-btn">', unsafe_allow_html=True)
+                clear_checked_clicked = st.button(
+                    "체크된 게임만 초기화",
+                    use_container_width=True,
+                    key="btn_clear_checked_games",
+                )
+                st.markdown("</div>", unsafe_allow_html=True)
 
-                    # ✅ 이 라운드 빈칸 채우기
-                    if fill_round_clicked:
-                        plan = _fill_round_plan(
-                            r=r,
-                            players_selected=players_selected,
-                            court_count=court_count,
-                            gtype=gtype,
-                            view_mode=view_mode_for_schedule,
-                            gender_mode=_manual_gender_to_mode(manual_gender_mode),
-                            ntrp_on=bool(manual_fill_ntrp),
-                        )
-                        if plan:
-                            _apply_plan_to_state(plan)
-                        else:
-                            st.info("이 라운드는 이미 빈칸이 없어.")
+            with t3:
+                st.markdown(
+                    f"<div style='text-align:right; font-weight:800; color:#374151;'>선택됨: {len(selected_games)}게임</div>",
+                    unsafe_allow_html=True,
+                )
 
-                    st.markdown("<div style='height:0.6rem;'></div>", unsafe_allow_html=True)
+            # ✅ 체크된 게임 초기화
+            if clear_checked_clicked and selected_games:
+                for rr, cc in selected_games:
+                    if gtype == "단식":
+                        keys = [_manual_key(rr, cc, 1, gtype), _manual_key(rr, cc, 2, gtype)]
+                    else:
+                        keys = [_manual_key(rr, cc, i, gtype) for i in (1, 2, 3, 4)]
+                    for k in keys:
+                        st.session_state[k] = "선택"
+                        st.session_state[f"_prev_{k}"] = "선택"
 
-                    # ✅ 코트별 selectbox 렌더 (단식/복식 중복 제거: 헬퍼 1개로 렌더)
-                    for c in range(1, int(court_count) + 1):
-                        st.markdown(f"**코트 {c}**")
+            # ✅ 체크된 게임 빈칸 채우기
+            if fill_checked_clicked and players_selected and selected_games:
+                gm = _manual_gender_to_mode(manual_gender_mode)
 
-                        grp_tag = _court_group_tag(view_mode_for_schedule, c)
-                        pool = _pool_by_group(players_selected, grp_tag)
+                # 라운드별로 묶어서, 체크된 코트만 채우기 (라운드 내 중복 방지 유지)
+                by_round = {}
+                for rr, cc in selected_games:
+                    by_round.setdefault(int(rr), []).append(int(cc))
 
-                        _render_manual_court_selectboxes(
-                            r=r,
-                            c=c,
-                            pool=pool,
-                            court_count=court_count,
-                            gtype=gtype,
-                        )
+                plan_all = {}
+                for rr, c_list in by_round.items():
+                    plan_r = _fill_round_plan(
+                        r=int(rr),
+                        players_selected=players_selected,
+                        court_count=court_count,
+                        gtype=gtype,
+                        view_mode=view_mode_for_schedule,
+                        gender_mode=gm,
+                        ntrp_on=bool(manual_fill_ntrp),
+                        target_courts=c_list,
+                    )
+                    plan_all.update(plan_r)
 
-                        st.markdown("<div style='height:0.6rem;'></div>", unsafe_allow_html=True)
+                if plan_all:
+                    _apply_plan_to_state(plan_all)
+                else:
+                    st.info("체크된 게임에서 채울 빈칸이 없어.")
 
-                    st.markdown("---")
+            st.markdown("<div style='height:0.4rem;'></div>", unsafe_allow_html=True)
 
+            # -------------------------
+            # ✅ 게임 나열 렌더
+            # -------------------------
+            for (gno, rr, cc) in games:
+
+                # 헤더(체크 + 게임명)
+                h1, h2 = st.columns([0.9, 9.1], vertical_alignment="center")
+                with h1:
+                    st.checkbox(
+                        "",
+                        value=bool(st.session_state.get(f"chk_game_{gno}", False)),
+                        key=f"chk_game_{gno}",
+                        label_visibility="collapsed",
+                    )
+                with h2:
+                    st.markdown(f"**게임 {gno} · 코트 {cc}**")
+
+                # 코트 그룹(조별 분리) 반영
+                grp_tag = _court_group_tag(view_mode_for_schedule, cc)
+                pool = _pool_by_group(players_selected, grp_tag)
+
+                _render_manual_court_selectboxes(
+                    r=rr,
+                    c=cc,
+                    pool=pool,
+                    court_count=court_count,
+                    gtype=gtype,
+                )
+
+                st.markdown("<div style='height:0.6rem;'></div>", unsafe_allow_html=True)
+
+            st.markdown("---")
             # -------------------------
             # 수동 대진 리스트 만들기 (실제 위젯 값 기준)
             # -------------------------
