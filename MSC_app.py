@@ -191,6 +191,12 @@ if _FORCE_MOBILE_PARAM is not None:
 else:
     DETECTED_MOBILE = _truthy(_get_query_param_single("msc_mobile", "0"))
 
+# ✅ 전역 모바일 모드 플래그: 이후 모든 렌더/스타일 분기에 사용
+#   - 강제 고정(msc_force_mobile)이 있으면 그 값을 따름
+#   - 없으면 msc_mobile(자동 감지 JS가 세팅)를 따름
+st.session_state["mobile_mode"] = bool(DETECTED_MOBILE)
+
+
 st.set_page_config(
     page_title=APP_TITLE,
     layout=("centered" if DETECTED_MOBILE else "wide"),
@@ -239,43 +245,38 @@ components.html(
     """
 <script>
 (function () {
-  const win = window.parent;
-  if (!win) return;
+  const root = window.top || window.parent || window;
+  if (!root) return;
 
   function isMobile(){
     try {
-      return win.matchMedia('(max-width: 900px)').matches ||
-             /Android|iPhone|iPad|iPod/i.test(win.navigator.userAgent);
+      const ua = (root.navigator && root.navigator.userAgent) ? root.navigator.userAgent : '';
+      const uaMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+      const w = Math.min(root.innerWidth || 9999, (root.screen && root.screen.width) ? root.screen.width : 9999);
+      const mq = root.matchMedia ? root.matchMedia('(max-width: 900px)').matches : false;
+      return uaMobile || mq || (w <= 900);
     } catch(e) { return false; }
   }
 
-  const url = new URL(win.location.href);
+  const url = new URL(root.location.href);
   const sp = url.searchParams;
 
   // ✅ 강제 고정이 있으면 자동 전환 안 함
   if (sp.has('msc_force_mobile')) return;
 
-  const want = isMobile() ? '1' : null;
-  const cur = sp.get('msc_mobile');
+  const want = isMobile() ? '1' : '0';
+  const cur = sp.get('msc_mobile') || '0';
 
-  let changed = false;
-  if (want === '1') {
-    if (cur !== '1') { sp.set('msc_mobile', '1'); changed = true; }
-  } else {
-    if (cur) { sp.delete('msc_mobile'); changed = true; }
-  }
-
-  if (changed) {
+  if (cur !== want) {
+    sp.set('msc_mobile', want);
     // replace로 히스토리 꼬임 최소화
-    win.location.replace(url.toString());
+    root.location.replace(url.toString());
   }
 })();
 </script>
 """,
     height=0,
 )
-
-
 
 components.html(
     """
@@ -3381,7 +3382,7 @@ if _force_mobile is not None:
     mobile_mode = _truthy(_force_mobile)
 else:
     mobile_mode = bool(DETECTED_MOBILE)
-st.session_state["mobile_mode"] = mobile_mode
+st.session_state["mobile_mode"] = mobile_mode  # (동일 로직 재확인)
 
 
 MOBILE_SCORE_ROW_CSS = """
