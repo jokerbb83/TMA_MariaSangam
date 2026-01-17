@@ -258,6 +258,40 @@ st.markdown("""
 .msc-scroll-x th, .msc-scroll-x td{
   white-space:nowrap;
 }
+
+/* ✅ 수동 대진(직접 배정) 헤더: 코트 옆 컬러칩을 '좌측 정렬'로 붙이기 */
+.msc-gamehead{
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.msc-chip-wrap{
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  gap:6px;
+  flex-wrap:wrap;
+}
+.msc-chip{
+  display:inline-block;
+  padding:4px 10px;
+  border-radius:999px;
+  font-size:0.85rem;
+  font-weight:800;
+  line-height:1.1;
+  color:#111827;
+}
+.msc-chip-m{ background:#cce8ff; }
+.msc-chip-f{ background:#ffd6d6; }
+.msc-chip-u{ background:#e5e7eb; }
+.msc-vs{
+  display:inline-block;
+  margin:0 6px;
+  color:#6b7280;
+  font-weight:900;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -4733,6 +4767,43 @@ def render_tab_today_session(tab):
                     used.add(p)
                     auto_keys.add(k)
 
+                # ✅ 혼합(남+여) 옵션: 2남2여가 모여도 (남남 vs 여여)로 배치될 수 있음
+                #    -> 슬롯(1~4) 내에서 가능한 범위(수동 고정 슬롯은 제외)에서 스왑해서
+                #       "남,여 vs 남,여" 형태로 강제
+                if gender_mode == "혼합":
+                    final_vals = []
+                    for _k, _v_eff in zip(ks, eff_vs):
+                        final_vals.append(plan.get(_k, _v_eff))
+
+                    if all(v != "선택" for v in final_vals):
+                        def _same_gender_team(team):
+                            return _gender_of(team[0]) == _gender_of(team[1])
+
+                        t1_now = final_vals[:2]
+                        t2_now = final_vals[2:4]
+
+                        if _same_gender_team(t1_now) and _same_gender_team(t2_now):
+                            # 팀 간에 1명씩 교환하면 혼복 형태가 된다.
+                            swap_candidates = [(1, 2), (1, 3), (0, 2), (0, 3)]
+
+                            for a, b in swap_candidates:
+                                # 수동 고정(keep_mask=True) 슬롯은 건드리지 않음
+                                if keep_mask[a] or keep_mask[b]:
+                                    continue
+
+                                cand = list(final_vals)
+                                cand[a], cand[b] = cand[b], cand[a]
+
+                                if (not _same_gender_team(cand[:2])) and (not _same_gender_team(cand[2:4])):
+                                    # 스왑 반영
+                                    for j, _k in enumerate(ks):
+                                        if keep_mask[j]:
+                                            continue
+                                        if cand[j] != final_vals[j]:
+                                            plan[_k] = cand[j]
+                                            auto_keys.add(_k)
+                                    break
+
             return plan, auto_keys
 
         # =========================================================
@@ -6202,7 +6273,6 @@ def render_tab_today_session(tab):
         # =========================================================
         # 5. 대진표 생성 / 미리보기 / 저장  (✅ 자동/수동 공통 영역)
         # =========================================================
-        st.markdown("---")
         st.subheader("5. 대진표 생성 / 미리보기")
 
         col_gen, col_edit, col_save = st.columns(3)
@@ -6900,8 +6970,10 @@ with tab3:
                                     if nm:
                                         playing.add(nm)
 
+                                # ✅ 텍스트 복사용 포맷: "A, B vs C, D"가 아니라
+                                #    "A,BvsC,D"처럼 팀 내는 쉼표로, vs 주변은 공백 없이
                                 lines.append(
-                                    f"{round_no}게임{court_no}코트 {_team_join(t1)} vs {_team_join(t2)}"
+                                    f"{round_no}게임{court_no}코트 {_team_join(t1)}vs{_team_join(t2)}"
                                 )
 
                             bench = [nm for nm in all_names if nm not in playing]
