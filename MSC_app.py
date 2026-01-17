@@ -290,6 +290,23 @@ components.html("""
     /* 혹시 footer로 남는 경우까지 같이 */
     footer { display: none !important; visibility: hidden !important; height: 0 !important; }
   `;
+
+  // ✅ Streamlit Cloud 우하단 'Manage app' 버튼 숨김(소유자 로그인 상태에서만 보이는 UI)
+  function hideManageApp(){
+    try {
+      const nodes = doc.querySelectorAll('a,button,div,span');
+      nodes.forEach((el) => {
+        const txt = (el.innerText || '').trim();
+        if (txt === 'Manage app') {
+          el.style.display = 'none';
+          el.style.visibility = 'hidden';
+          el.style.height = '0';
+        }
+      });
+    } catch (e) {}
+  }
+  hideManageApp();
+  new MutationObserver(hideManageApp).observe(doc.body, { childList: true, subtree: true });
 })();
 </script>
 """, height=0)
@@ -1039,6 +1056,28 @@ def _render_mobile_table_html(html: str, *, font_px: int = 11):
     margin-right: 3px !important;
     border-radius: 6px !important;
     font-size: 0.80rem !important;
+    font-weight: 650 !important;
+  }}
+
+  /* ✅ "현재 스코어 요약(표)"는 화면에 '한눈에' 들어오게 더 타이트하게 */
+  #{sid} table.score-summary {{
+    /* zoom은 모바일 크롬에서 안정적. (지원 안 되면 아래 transform fallback) */
+    zoom: 0.92;
+  }}
+  @supports not (zoom: 1) {{
+    #{sid} table.score-summary {{
+      transform: scale(0.92);
+      transform-origin: top left;
+    }}
+  }}
+  #{sid} table.score-summary th, #{sid} table.score-summary td {{
+    padding: 3px 4px !important;
+  }}
+  #{sid} table.score-summary .name-badge {{
+    padding: 1px 5px !important;
+    margin-right: 2px !important;
+    border-radius: 6px !important;
+    font-size: 0.74rem !important;
     font-weight: 650 !important;
   }}
   /* 인덱스/헤더가 한 글자씩 세로로 꺾이는 경우 방지 */
@@ -2495,22 +2534,28 @@ def render_score_summary_table(games, roster_by_name):
         return
     games_sorted = sorted(games, key=lambda x: x["게임"])
 
-    # ✅ 모바일에서 오른쪽이 잘리는 느낌을 줄이기 위해
-    #   - 점수 헤더를 짧게(팀1/팀2)
-    #   - 게임/코트/점수 칸 폭을 더 좁게
-    #   - table-layout:fixed 로 화면폭에 맞게 압축
-    html = [
-        "<table class='score-summary' style='border-collapse:collapse;width:100%;table-layout:fixed;'>"
-        "<colgroup>"
-        "<col style='width:34px'>"   # 게임
-        "<col style='width:34px'>"   # 코트
-        "<col style='width:44px'>"   # 타입
-        "<col>"                      # 팀1(선수)
-        "<col style='width:44px'>"   # 팀1 점수
-        "<col style='width:44px'>"   # 팀2 점수
-        "<col>"                      # 팀2(선수)
-        "</colgroup>"
-    ]
+    # ✅ 모바일(옵저버 포함)에서는 표가 '잘리지 않게' 하는 게 최우선.
+    #    table-layout:fixed + width:100% 는 좁은 화면에서 이름 칸이 강제로 압축되어
+    #    오른쪽(팀2)이 잘리는 현상을 만들 수 있음.
+    #    → 모바일에서는 auto 레이아웃으로 두고, wrapper(overflow-x:auto)로 처리.
+    if is_mobile():
+        html = [
+            "<table class='score-summary' style='border-collapse:collapse;'>"
+        ]
+    else:
+        # PC에서는 보기 좋게 고정 폭(압축) 유지
+        html = [
+            "<table class='score-summary' style='border-collapse:collapse;width:100%;table-layout:fixed;'>"
+            "<colgroup>"
+            "<col style='width:34px'>"   # 게임
+            "<col style='width:34px'>"   # 코트
+            "<col style='width:44px'>"   # 타입
+            "<col>"                      # 팀1(선수)
+            "<col style='width:44px'>"   # 팀1 점수
+            "<col style='width:44px'>"   # 팀2 점수
+            "<col>"                      # 팀2(선수)
+            "</colgroup>"
+        ]
     header_cols = ["게임", "코트", "타입", "팀1", "팀1", "팀2", "팀2"]
     html.append("<thead><tr>")
     for col in header_cols:
@@ -2558,7 +2603,7 @@ def render_score_summary_table(games, roster_by_name):
     table_html = "".join(html)
     # ✅ 모바일: 한 줄 유지 + 가로 스크롤로 세로로 길어지는 현상 방지
     if is_mobile():
-        _render_mobile_table_html(table_html, font_px=11)
+        _render_mobile_table_html(table_html, font_px=10)
     else:
         st.markdown(table_html, unsafe_allow_html=True)
 
@@ -3181,16 +3226,15 @@ roster_by_name = {p["name"]: p for p in roster}
 
 st.title(f"🎾 {APP_TITLE}")
 
-# 📱 폰에서 볼 때 ON 해두면 A/B조 나란히 레이아웃을 세로로 바꿔줌
-# ✅ 옵저버/스코어보드 모드에서는 강제로 ON (항상 모바일 최적화)
+# 📱 옵저버/스코어보드: 무조건 모바일 최적화 ON (체크박스도 숨김)
 if IS_OBSERVER:
     mobile_mode = True
     st.session_state["mobile_mode"] = True
-    st.caption("📱 옵저버 모드: 모바일 최적화가 항상 적용됩니다.")
 else:
+    # 일반(관리자) 모드에서만 토글 제공
     mobile_mode = st.checkbox(
         "📱 모바일 최적화 모드",
-        value=bool(st.session_state.get("mobile_mode", True)),
+        value=True,
         help="핸드폰으로 볼 때 켜 두는 걸 추천!"
     )
     st.session_state["mobile_mode"] = mobile_mode
@@ -6207,29 +6251,33 @@ with tab3:
         if sel_date == "전체":
             view_mode_scores = "전체"
         else:
-            # lock_view=True면 전체로 고정하고 라디오를 안 보여줌
-            if lock_view:
+            # ✅ 옵저버/스코어보드에서는 "표시 방식" 라디오 자체를 숨기고 항상 "전체"로 고정
+            if IS_OBSERVER:
                 view_mode_scores = "전체"
             else:
-                # ✅ 저장된 값이 없으면 기본은 "전체"
-                saved_view = day_data.get("score_view_mode", "전체")
+                # lock_view=True면 전체로 고정하고 라디오를 안 보여줌
+                if lock_view:
+                    view_mode_scores = "전체"
+                else:
+                    # ✅ 저장된 값이 없으면 기본은 "전체"
+                    saved_view = day_data.get("score_view_mode", "전체")
 
-                default_view_index = 1 if saved_view == "전체" else 0  # ["조별", "전체"]에서 전체=1
+                    default_view_index = 1 if saved_view == "전체" else 0  # ["조별", "전체"]에서 전체=1
 
-                view_mode_scores = st.radio(
-                    "표시 방식",
-                    ["조별 보기 (A/B조)", "전체"],
-                    horizontal=True,
-                    key=f"tab3_view_mode_scores_{sel_date}",   # ✅ 날짜별 key로 분리
-                    index=default_view_index,
-                )
+                    view_mode_scores = st.radio(
+                        "표시 방식",
+                        ["조별 보기 (A/B조)", "전체"],
+                        horizontal=True,
+                        key=f"tab3_view_mode_scores_{sel_date}",   # ✅ 날짜별 key로 분리
+                        index=default_view_index,
+                    )
 
-                # ✅ 선택값 저장(다음에 다시 들어와도 유지)
-                if (not IS_OBSERVER) and (view_mode_scores != saved_view):
-                    day_data["score_view_mode"] = view_mode_scores
-                    sessions[sel_date] = day_data
-                    st.session_state.sessions = sessions
-                    save_sessions(sessions)
+                    # ✅ 선택값 저장(다음에 다시 들어와도 유지)
+                    if view_mode_scores != saved_view:
+                        day_data["score_view_mode"] = view_mode_scores
+                        sessions[sel_date] = day_data
+                        st.session_state.sessions = sessions
+                        save_sessions(sessions)
 
 
         # 나중에 다시 그리기 위한 요약 컨테이너
