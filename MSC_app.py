@@ -8,6 +8,7 @@ import math
 import os
 import random
 import re
+import html as _html
 from collections import Counter, defaultdict
 from datetime import date
 from itertools import combinations
@@ -177,6 +178,14 @@ st.markdown("""
 .msc-scroll-x th, .msc-scroll-x td{
   white-space:nowrap;
 }
+
+.msc-gamehead{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+.msc-chip-wrap{display:flex; align-items:center; justify-content:flex-end; gap:6px; flex-wrap:wrap;}
+.msc-chip{display:inline-block; padding:4px 10px; border-radius:999px; font-size:0.78rem; font-weight:800; line-height:1;}
+.msc-chip-m{background:#dbeafe; color:#1e40af;}
+.msc-chip-f{background:#ffe4e6; color:#be123c;}
+.msc-chip-u{background:#e5e7eb; color:#374151;}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -4208,6 +4217,24 @@ def render_tab_today_session(tab):
         def _gender_of(name: str) -> str:
             return roster_by_name.get(name, {}).get("gender", "남")
 
+        def _gender_chip_class(name: str) -> str:
+            g = str(_gender_of(name) or '').strip()
+            if g in ('여', '여자', 'F', 'Female', 'female', 'W'): 
+                return 'msc-chip-f'
+            if g in ('남', '남자', 'M', 'Male', 'male'): 
+                return 'msc-chip-m'
+            return 'msc-chip-u'
+
+        def _chips_html(names) -> str:
+            parts = []
+            for nm in (names or []):
+                if not nm or nm == '선택':
+                    continue
+                cls = _gender_chip_class(nm)
+                parts.append(f"<span class='msc-chip {cls}'>{_html.escape(str(nm))}</span>")
+            return ''.join(parts)
+
+
         def _ntrp_of(name: str):
             v = roster_by_name.get(name, {}).get("ntrp", None)
             try:
@@ -5832,7 +5859,17 @@ def render_tab_today_session(tab):
                         label_visibility="collapsed",
                     )
                 with h2:
-                    st.markdown(f"**게임 {gno} · 코트 {cc}**")
+                    # ✅ 코트 옆에 남/녀 칩 표시(직관적으로)
+                    if gtype == '단식':
+                        _ks = [_manual_key(rr, cc, 1, gtype), _manual_key(rr, cc, 2, gtype)]
+                    else:
+                        _ks = [_manual_key(rr, cc, i, gtype) for i in (1, 2, 3, 4)]
+                    _vals = [st.session_state.get(k, '선택') for k in _ks]
+                    _chips = _chips_html(_vals)
+                    st.markdown(
+                        f"<div class='msc-gamehead'><div style='font-weight:900;'>게임 {gno} · 코트 {cc}</div><div class='msc-chip-wrap'>{_chips}</div></div>",
+                        unsafe_allow_html=True,
+                    )
 
                 # 코트 그룹(조별 분리) 반영
                 grp_tag = _court_group_tag(view_mode_for_schedule, cc)
