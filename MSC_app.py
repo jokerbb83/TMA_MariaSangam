@@ -173,6 +173,34 @@ def _get_query_params_dict():
             return {}
 
 
+
+
+def _set_query_params_dict(new_params: dict):
+    """streamlit 버전 호환 (st.query_params / experimental_set_query_params)"""
+    # 빈 문자열 값은 제거(쿼리 깔끔하게)
+    cleaned = {k: v for k, v in (new_params or {}).items() if str(v).strip() != ""}
+    try:
+        # st.query_params는 dict처럼 assign 가능
+        st.query_params.clear()  # type: ignore[attr-defined]
+        for k, v in cleaned.items():
+            st.query_params[k] = str(v)  # type: ignore[attr-defined]
+    except Exception:
+        try:
+            st.experimental_set_query_params(**{k: str(v) for k, v in cleaned.items()})
+        except Exception:
+            # 마지막 fallback: 아무것도 못 하면 무시
+            pass
+
+
+def _qp_force_mode() -> str:
+    """'auto' | 'pc' | 'mobile'"""
+    qp = _get_query_params_dict()
+    force = str(qp.get('msc_force_mobile', '')).strip().lower()
+    if force in ('1', 'true', 'yes', 'y', 'on'):
+        return 'mobile'
+    if force in ('0', 'false', 'no', 'n', 'off'):
+        return 'pc'
+    return 'auto'
 def _detect_mobile_from_qp() -> bool:
     qp = _get_query_params_dict()
 
@@ -3444,22 +3472,57 @@ roster_by_name = {p["name"]: p for p in roster}
 
 st.title(f"🎾 {APP_TITLE}")
 
-# 📱 옵저버/스코어보드: 무조건 모바일 최적화 ON (체크박스도 숨김)
+# 📱 화면 모드: 자동(기기 감지) / PC 강제 / 모바일 강제
+# - 옵저버/스코어보드: 무조건 모바일 최적화 ON
 if IS_OBSERVER:
     mobile_mode = True
     st.session_state["mobile_mode"] = True
 else:
-    # 일반(관리자) 모드에서만 토글 제공
-    # 쿼리파라미터로 감지된 모드가 바뀌면(PC<->모바일) 세션 기본값도 같이 동기화
-    if st.session_state.get("_mobile_qp_last") != MOBILE_AUTO:
-        st.session_state["mobile_mode"] = MOBILE_AUTO
-        st.session_state["_mobile_qp_last"] = MOBILE_AUTO
+    def _rerun_now():
+        if hasattr(st, "rerun"):
+            st.rerun()
+        elif hasattr(st, "experimental_rerun"):
+            st.experimental_rerun()
 
-    mobile_mode = st.checkbox(
-        "📱 모바일 최적화 모드",
-        value=st.session_state.get("mobile_mode", MOBILE_AUTO),
-        help="PC에서는 자동 OFF, 모바일에서는 자동 ON (필요하면 수동으로 바꿀 수 있어)"
-    )
+    qp = _get_query_params_dict()
+    cur_mode = _qp_force_mode()  # auto|pc|mobile
+
+    # UI: PC/모바일 강제
+    _mode_map = {"자동": "auto", "PC 강제": "pc", "모바일 강제": "mobile"}
+    _inv_map = {v: k for k, v in _mode_map.items()}
+    default_label = _inv_map.get(cur_mode, "자동")
+
+    cols = st.columns([1.2, 8.8])
+    with cols[0]:
+        st.markdown("&nbsp;", unsafe_allow_html=True)
+    with cols[1]:
+        picked_label = st.radio(
+            "화면 모드",
+            ["자동", "PC 강제", "모바일 강제"],
+            index=["자동", "PC 강제", "모바일 강제"].index(default_label),
+            horizontal=True,
+            key="msc_force_mode_radio",
+            label_visibility="collapsed",
+        )
+
+    picked = _mode_map.get(picked_label, "auto")
+    if picked != cur_mode:
+        if picked == "auto":
+            # 강제 해제(자동)
+            qp.pop("msc_force_mobile", None)
+            # msc_mobile은 JS가 기기에 맞게 유지/갱신
+        elif picked == "pc":
+            qp["msc_force_mobile"] = "0"
+            qp["msc_mobile"] = "0"
+        else:
+            qp["msc_force_mobile"] = "1"
+            qp["msc_mobile"] = "1"
+
+        _set_query_params_dict(qp)
+        _rerun_now()
+
+    # ✅ 최종 모바일 모드 결정
+    mobile_mode = (picked == "mobile") or (picked == "auto" and MOBILE_AUTO)
     st.session_state["mobile_mode"] = mobile_mode
 
 
@@ -7475,35 +7538,33 @@ with tab3:
 
                         all_players = list(t1) + list(t2)
 
-                        # ✅ 모바일: 게임별 한 줄 요약(팀+스코어)
-                        if mobile_mode:
-                            try:
-                                _t1_inline = ", ".join([str(x) for x in t1])
-                                _t2_inline = ", ".join([str(x) for x in t2])
-                            except Exception:
-                                _t1_inline = " ".join(map(str, t1))
-                                _t2_inline = " ".join(map(str, t2))
-                            _s1_txt = "" if prev_s1 is None else str(prev_s1)
-                            _s2_txt = "" if prev_s2 is None else str(prev_s2)
-                            st.markdown(
-                                f"""
-                                <div style="
-                                    margin-top:-4px;
-                                    margin-bottom:6px;
-                                    font-size:0.82rem;
-                                    color:#111827;
-                                    white-space:nowrap;
-                                    overflow-x:auto;
-                                    -webkit-overflow-scrolling:touch;
-                                ">
-                                    {_t1_inline} <span style="font-weight:800;">{_s1_txt}</span>
-                                    <span style="color:#6b7280;font-weight:600;"> vs </span>
-                                    <span style="font-weight:800;">{_s2_txt}</span> {_t2_inline}
-                                </div>
-                                """,
-                                unsafe_allow_html=True,
-                            )
-
+                        # ✅ 게임별 한 줄 요약(팀+스코어) - PC/모바일 공통 (이름은 성별 칩)
+                        _s1_txt = "" if prev_s1 is None else str(prev_s1)
+                        _s2_txt = "" if prev_s2 is None else str(prev_s2)
+                        st.markdown(
+                            f"""
+                            <div style="
+                                margin-top:-4px;
+                                margin-bottom:6px;
+                                font-size:0.84rem;
+                                color:#111827;
+                                display:flex;
+                                align-items:center;
+                                gap:6px;
+                                flex-wrap:nowrap;
+                                white-space:nowrap;
+                                overflow-x:auto;
+                                -webkit-overflow-scrolling:touch;
+                            ">
+                                <span style="display:inline-flex; gap:4px;">{render_name_pills(list(t1))}</span>
+                                <span style="font-weight:800; padding:0 2px;">{_s1_txt}</span>
+                                <span style="color:#6b7280; font-weight:700;">vs</span>
+                                <span style="font-weight:800; padding:0 2px;">{_s2_txt}</span>
+                                <span style="display:inline-flex; gap:4px;">{render_name_pills(list(t2))}</span>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
 
                         # 1) 복식(2:2) → 사이드는 항상 수정 가능, 점수만 잠금
                         # 1) 복식(2:2) → 사이드는 라디오, 점수는 잠금만 적용
