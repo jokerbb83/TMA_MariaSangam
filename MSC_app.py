@@ -163,6 +163,23 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# ---------------------------------------------------------
+# ✅ 옵저버/스코어보드: 화면 가로폭 제한(무한히 넓어지는 것 방지)
+# ---------------------------------------------------------
+if IS_OBSERVER:
+    st.markdown("""
+    <style>
+    [data-testid="stAppViewContainer"] .main .block-container{
+      max-width: 1200px !important;
+      padding-left: 1.2rem !important;
+      padding-right: 1.2rem !important;
+      margin-left: auto !important;
+      margin-right: auto !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+
 st.markdown("""
 <style>
 .msc-scroll-x{
@@ -7478,6 +7495,35 @@ with tab3:
                     # ✅ 여기서 한 번 정의해줘야 해
                     score_options_local = SCORE_OPTIONS
 
+                    # -------------------------------------------------
+                    # ✅ (경기기록/통계) 전체 경기 스코어: (복식,코트) 옆에 컬러칩 선수 표시
+                    # -------------------------------------------------
+                    def _gender_chip_class(name: str) -> str:
+                        info = roster_by_name.get(name, {}) or {}
+                        g = (info.get('gender') or info.get('성별') or '').strip()
+                        if g == '여':
+                            return 'msc-chip-f'
+                        if g == '남':
+                            return 'msc-chip-m'
+                        return 'msc-chip-u'
+
+                    def _chips_html(names) -> str:
+                        parts = []
+                        for nm in (names or []):
+                            if not nm:
+                                continue
+                            cls = _gender_chip_class(str(nm))
+                            parts.append(f"<span class='msc-chip {cls}'>{_html.escape(str(nm))}</span>")
+                        return ''.join(parts)
+
+                    def _match_chips_html(team1, team2) -> str:
+                        left = _chips_html(team1)
+                        right = _chips_html(team2)
+                        if not (left or right):
+                            return ''
+                        return f"{left}<span class='msc-vs'>vs</span>{right}"
+
+
                     # 실제 게임들
                     for local_no, (idx, gtype, t1, t2, court) in enumerate(game_list, start=1):
 
@@ -7496,6 +7542,11 @@ with tab3:
                         _sep_css = "border-top:1px solid #e5e7eb;" if _show_sep else "border-top:none;"
                         _top_css = "margin-top:0.6rem; padding-top:0.4rem;" if _show_sep else "margin-top:0.25rem; padding-top:0.15rem;"
 
+                        # ✅ 전체 경기 스코어 블록에서만: (복식,코트) 옆에 팀 컬러칩 표시
+                        _chips = ''
+                        if '전체 경기 스코어' in str(title):
+                            _chips = _match_chips_html(t1, t2)
+                        
                         st.markdown(
                             f"""
                             <div style="
@@ -7503,12 +7554,15 @@ with tab3:
                                 {_sep_css}
                                 margin-bottom:0.18rem;
                             ">
-                                <span style="font-weight:600; font-size:0.96rem;">
-                                    게임 {local_no}
-                                </span>
-                                <span style="font-size:0.82rem; color:#6b7280; margin-left:6px;">
+                              <div class='msc-gamehead'>
+                                <div>
+                                  <span style='font-weight:600; font-size:0.96rem;'>게임 {local_no}</span>
+                                  <span style='font-size:0.82rem; color:#6b7280; margin-left:6px;'>
                                     ({gtype}{', 코트 ' + str(court) if court else ''})
-                                </span>
+                                  </span>
+                                </div>
+                                <div class='msc-chip-wrap'>{_chips}</div>
+                              </div>
                             </div>
                             """,
                             unsafe_allow_html=True,
