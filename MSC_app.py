@@ -8505,14 +8505,31 @@ with tab5:
         # ---------------------------------------------------------
         # 0) 월 선택
         # ---------------------------------------------------------
+
         months = sorted(
             {
                 d[:7].strip()
                 for d in sessions.keys()
                 if d != "전체" and isinstance(d, str) and len(d) >= 7 and d[4] == "-"
             },
-            reverse=True,   # ✅ 최신 -> 과거
+            reverse=True,  # ✅ 최신 -> 과거
         )
+        
+        # ✅ 항상 최신월을 기본 선택으로 (기존 선택값이 없거나 목록에 없으면 최신으로)
+        if "sel_month" not in st.session_state or st.session_state["sel_month"] not in months:
+            st.session_state["sel_month"] = months[0]
+        
+        sel_month = st.selectbox(
+            "월 선택 (YYYY-MM)",
+            months,
+            key="sel_month",
+        )
+
+
+
+
+
+
         if not months:
             st.info("월별로 표시할 기록이 없습니다.")
         else:
