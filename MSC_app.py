@@ -289,28 +289,78 @@ components.html("""
 
     /* 혹시 footer로 남는 경우까지 같이 */
     footer { display: none !important; visibility: hidden !important; height: 0 !important; }
+
+    /* ✅ Streamlit Cloud 우하단 'Manage app' 버튼/링크 숨김 (텍스트가 없거나 구조가 달라도 잡히게) */
+    a[aria-label*="Manage app" i], button[aria-label*="Manage app" i],
+    a[title*="Manage app" i], button[title*="Manage app" i],
+    a[aria-label*="Manage" i][aria-label*="app" i], button[aria-label*="Manage" i][aria-label*="app" i],
+    a[title*="Manage" i][title*="app" i], button[title*="Manage" i][title*="app" i] {
+      display: none !important;
+      visibility: hidden !important;
+      height: 0 !important;
+      width: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: hidden !important;
+    }
   `;
 
   // ✅ Streamlit Cloud 우하단 'Manage app' 버튼 숨김(소유자 로그인 상태에서만 보이는 UI)
-  function hideManageApp(){
+  function hideManageApp(root){
     try {
-      const nodes = doc.querySelectorAll('a,button,div,span');
+      const r = root || doc;
+      const nodes = r.querySelectorAll('a,button');
       nodes.forEach((el) => {
         const txt = (el.innerText || '').trim();
-        if (txt === 'Manage app') {
-          el.style.display = 'none';
-          el.style.visibility = 'hidden';
-          el.style.height = '0';
+        const aria = (el.getAttribute('aria-label') || '').trim();
+        const title = (el.getAttribute('title') || '').trim();
+        const combined = (txt + ' ' + aria + ' ' + title).toLowerCase();
+
+        if (combined.includes('manage app') || (combined.includes('manage') && combined.includes('app'))) {
+          const kill = (node) => {
+            if (!node) return;
+            node.style.display = 'none';
+            node.style.visibility = 'hidden';
+            node.style.height = '0';
+            node.style.width = '0';
+            node.style.margin = '0';
+            node.style.padding = '0';
+            node.style.overflow = 'hidden';
+          };
+          kill(el);
+
+          // 부모 컨테이너까지 같이 숨겨서 빈 영역/오버레이 제거
+          let p = el.parentElement;
+          for (let i = 0; i < 5 && p; i++) {
+            const pt = ((p.innerText || '') + ' ' + (p.getAttribute('aria-label') || '') + ' ' + (p.getAttribute('title') || '')).toLowerCase();
+            if (pt.includes('manage app') || (pt.includes('manage') && pt.includes('app'))) {
+              kill(p);
+            }
+            // fixed 포지션(우하단 플로팅 버튼류)면 같이 숨김
+            try {
+              const cs = window.getComputedStyle(p);
+              if (cs && cs.position === 'fixed') {
+                kill(p);
+              }
+            } catch(e) {}
+            p = p.parentElement;
+          }
+        }
+      });
+
+      // Shadow DOM 내부도 탐색 (일부 Streamlit Cloud UI가 shadowRoot에 있을 수 있음)
+      r.querySelectorAll('*').forEach((el) => {
+        if (el && el.shadowRoot) {
+          hideManageApp(el.shadowRoot);
         }
       });
     } catch (e) {}
   }
-  hideManageApp();
-  new MutationObserver(hideManageApp).observe(doc.body, { childList: true, subtree: true });
+  hideManageApp(doc);
+  new MutationObserver(() => hideManageApp(doc)).observe(doc.body, { childList: true, subtree: true });
 })();
 </script>
 """, height=0)
-
 
 # ---------------------------------------------------------
 # ✅ Streamlit 상/하단 크레딧/툴바 숨김 CSS
