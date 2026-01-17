@@ -163,21 +163,95 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+
+
+# ---------------------------------------------------------
+# ✅ 모바일/PC 자동 감지 (체크박스 없이 자동 적용)
+#   - JS가 브라우저 폭/UA로 모바일 여부를 판단해 URL 쿼리(mm=1/0)를 맞춘 뒤 1회 reload
+#   - Python은 쿼리값을 읽어 st.session_state['mobile_mode']에 반영
+# ---------------------------------------------------------
+
+def _get_query_param(key: str):
+    """Streamlit 버전 차이를 흡수해서 쿼리 파라미터 값을 하나로 가져온다."""
+    try:
+        qp = st.query_params  # 신버전
+        v = qp.get(key)
+        if isinstance(v, (list, tuple)):
+            return v[0] if v else None
+        return v
+    except Exception:
+        try:
+            qp = st.experimental_get_query_params()
+            v = qp.get(key, [None])
+            return v[0] if isinstance(v, list) else v
+        except Exception:
+            return None
+
+# JS: 모바일 여부를 mm=1/0로 고정시켜서 서버(Python)도 동일하게 인지하도록 함
+components.html(
+    """
+<script>
+(function(){
+  const win = window.parent || window;
+  const doc = win.document;
+  function isMobile(){
+    try{
+      return win.matchMedia('(max-width: 900px)').matches || /Android|iPhone|iPad|iPod/i.test(win.navigator.userAgent);
+    }catch(e){
+      return /Android|iPhone|iPad|iPod/i.test((win.navigator && win.navigator.userAgent) || '');
+    }
+  }
+  const desired = isMobile() ? '1' : '0';
+  try{
+    const url = new URL(win.location.href);
+    const cur = url.searchParams.get('mm');
+
+    // ✅ 무한 리로드 방지(세션 내에서 마지막 상태 기록)
+    const k = 'msc_mm_last';
+    const last = win.sessionStorage ? win.sessionStorage.getItem(k) : null;
+
+    if (cur !== desired && last !== desired) {
+      if (win.sessionStorage) win.sessionStorage.setItem(k, desired);
+      url.searchParams.set('mm', desired);
+      win.history.replaceState({}, '', url.toString());
+      win.location.reload();
+      return;
+    }
+    if (win.sessionStorage) win.sessionStorage.setItem(k, desired);
+  }catch(e){}
+})();
+</script>
+    """,
+    height=0,
+)
+
+# Python: 쿼리(mm)가 있으면 그 값을 우선 반영
+_mm = str(_get_query_param('mm') or '').strip().lower()
+if _mm in ('1', 'true', 't', 'yes', 'y'):
+    st.session_state['mobile_mode'] = True
+elif _mm in ('0', 'false', 'f', 'no', 'n'):
+    st.session_state['mobile_mode'] = False
+else:
+    # 쿼리가 아직 없으면(첫 로드) 기본은 PC(OFF). JS가 곧 mm를 맞추고 reload됨.
+    st.session_state['mobile_mode'] = bool(st.session_state.get('mobile_mode', False))
+
 # ---------------------------------------------------------
 # ✅ 옵저버/스코어보드: 화면 가로폭 제한(무한히 넓어지는 것 방지)
-#   - Streamlit 버전/DOM에 따라 selector가 달라질 수 있어 여러 selector에 동시 적용
+#   - wide 레이아웃에서도 본문을 관리자처럼 일정 폭으로 고정
 # ---------------------------------------------------------
 if IS_OBSERVER:
     st.markdown("""
     <style>
-    /* ✅ 옵저버/스코어보드: wide에서도 본문 폭 고정 */
+    /* ✅ wide에서도 본문 폭 고정 */
     [data-testid="stMainBlockContainer"],
+    [data-testid="stMainBlockContainer"] .block-container,
     [data-testid="stAppViewContainer"] .main .block-container,
     [data-testid="stAppViewContainer"] section.main .block-container,
-    [data-testid="stAppViewContainer"] .block-container,
     section.main .block-container,
+    .main .block-container,
     .block-container{
-      max-width: 620px !important;
+      max-width: 720px !important;
+      width: 100% !important;
       padding-left: 1.2rem !important;
       padding-right: 1.2rem !important;
       margin-left: auto !important;
@@ -185,7 +259,6 @@ if IS_OBSERVER:
     }
     </style>
     """, unsafe_allow_html=True)
-
 
 st.markdown("""
 <style>
@@ -3320,18 +3393,8 @@ roster_by_name = {p["name"]: p for p in roster}
 
 st.title(f"🎾 {APP_TITLE}")
 
-# 📱 옵저버/스코어보드: 무조건 모바일 최적화 ON (체크박스도 숨김)
-if IS_OBSERVER:
-    mobile_mode = True
-    st.session_state["mobile_mode"] = True
-else:
-    # 일반(관리자) 모드에서만 토글 제공
-    mobile_mode = st.checkbox(
-        "📱 모바일 최적화 모드",
-        value=True,
-        help="핸드폰으로 볼 때 켜 두는 걸 추천!"
-    )
-    st.session_state["mobile_mode"] = mobile_mode
+# 📱 모바일 최적화: 체크박스 UI 제거 (자동 감지는 상단에서 처리)
+mobile_mode = st.session_state.get('mobile_mode', False)
 
 
 MOBILE_SCORE_ROW_CSS = """
@@ -4534,114 +4597,35 @@ def render_tab_today_session(tab):
                 avail = [p for p in pool if p not in used]
                 men = [p for p in avail if _gender_of(p) == "남"]
                 women = [p for p in avail if _gender_of(p) == "여"]
+
                 need = len(empty_keys)
                 picks = []
 
                 if gender_mode == "혼합":
-                    # ✅ 혼합(혼성) 복식: (남+여) vs (남+여) 되도록 우선 채움
-                    # - 가능한 경우 팀1/팀2 각각 1남1여를 강제
-                    # - 성비 부족/수동 고정으로 불가하면 남은 풀에서 랜덤 채움(최선)
-                    empty_pos = [i for i, v in enumerate(eff_vs) if v == "선택"]
-                    pos_need = {}  # pos_index(0~3) -> '남'/'여'/None
+                    already_m = sum(1 for x in already if _gender_of(x) == "남")
+                    already_w = sum(1 for x in already if _gender_of(x) == "여")
 
-                    # 팀별 요구 성별 계산
-                    for tpos in ((0, 1), (2, 3)):
-                        fixed_players = [eff_vs[i] for i in tpos if eff_vs[i] != "선택"]
-                        empties = [i for i in tpos if eff_vs[i] == "선택"]
-                        if not empties:
-                            continue
+                    while len(picks) < need:
+                        want_m = (already_m + sum(1 for x in picks if _gender_of(x) == "남")) < 2
+                        want_w = (already_w + sum(1 for x in picks if _gender_of(x) == "여")) < 2
 
-                        if len(fixed_players) == 1:
-                            g = _gender_of(fixed_players[0])
-                            req = "여" if g == "남" else ("남" if g == "여" else None)
-                            for ep in empties:
-                                pos_need[ep] = req
-
-                        elif len(fixed_players) == 0:
-                            # 두 칸이 비었으면 남/여 1명씩
-                            if len(empties) == 2:
-                                tmp = list(empties)
-                                rng.shuffle(tmp)
-                                pos_need[tmp[0]] = "남"
-                                pos_need[tmp[1]] = "여"
-                            else:
-                                pos_need[empties[0]] = None
-                        else:
-                            # 이미 2명 다 채워진 팀(수동 고정)
-                            pass
-
-                    pos_pick = {}
-                    # 1) 요구 성별대로 먼저 뽑기
-                    for pos in empty_pos:
-                        req = pos_need.get(pos, None)
-                        pick = None
-                        if req == "남" and men:
-                            pick = rng.choice(men)
+                        if want_m and men:
+                            pick = rng.choice(men) if not ntrp_on else _pick_by_ntrp_closest(men, None, rng=rng)
                             men.remove(pick)
-                        elif req == "여" and women:
-                            pick = rng.choice(women)
+                        elif want_w and women:
+                            pick = rng.choice(women) if not ntrp_on else _pick_by_ntrp_closest(women, None, rng=rng)
                             women.remove(pick)
                         else:
                             rest = men + women
-                            if rest:
-                                pick = rng.choice(rest)
-                                if pick in men:
-                                    men.remove(pick)
-                                else:
-                                    women.remove(pick)
-                        if pick:
-                            pos_pick[pos] = pick
+                            if not rest:
+                                break
+                            pick = rng.choice(rest) if not ntrp_on else _pick_by_ntrp_closest(rest, None, rng=rng)
+                            if pick in men:
+                                men.remove(pick)
+                            else:
+                                women.remove(pick)
 
-                    # 2) 아직 못 채운 빈칸이 있으면 남은 풀에서 채우기
-                    for pos in empty_pos:
-                        if pos in pos_pick:
-                            continue
-                        rest = men + women
-                        if not rest:
-                            break
-                        pick = rng.choice(rest)
-                        if pick in men:
-                            men.remove(pick)
-                        else:
-                            women.remove(pick)
-                        pos_pick[pos] = pick
-
-                    # empty_keys 순서(ks 순서)대로 picks를 만든다
-                    picks = [pos_pick[i] for i in empty_pos if i in pos_pick]
-
-                    # ✅ 마지막 안전장치: 4명이 모두 채워졌고, 팀이 혼합이 아니면 섞어서 맞춘다(가능할 때)
-                    try:
-                        # 현재 코트의 최종 후보(고정+신규)
-                        final = list(already) + list(picks)
-                        if len(final) == 4:
-                            # 고정된 포지션 정보
-                            fixed_map = {i: eff_vs[i] for i in range(4) if eff_vs[i] != "선택"}
-                            # 남/여 체크
-                            def _is_mixed_team(a,b):
-                                return _gender_of(a) != _gender_of(b)
-
-                            # 남/여가 2:2일 때만 재배치 시도
-                            mcnt = sum(1 for x in final if _gender_of(x) == "남")
-                            wcnt = sum(1 for x in final if _gender_of(x) == "여")
-                            if mcnt == 2 and wcnt == 2:
-                                import itertools as _it
-                                positions = [0,1,2,3]
-                                rem_pos = [p for p in positions if p not in fixed_map]
-                                rem_players = [x for x in final if x not in fixed_map.values()]
-                                best_assign = None
-                                for perm in _it.permutations(rem_players):
-                                    assign = dict(fixed_map)
-                                    for rp, pl in zip(rem_pos, perm):
-                                        assign[rp] = pl
-                                    if (assign.get(0) and assign.get(1) and assign.get(2) and assign.get(3) and
-                                        _is_mixed_team(assign[0], assign[1]) and _is_mixed_team(assign[2], assign[3])):
-                                        best_assign = assign
-                                        break
-                                if best_assign is not None:
-                                    # best_assign 기반으로 empty_pos 순서대로 picks 재구성
-                                    picks = [best_assign[i] for i in empty_pos]
-                    except Exception:
-                        pass
+                        picks.append(pick)
 
                 elif gender_mode == "동성":
                     already_gender = _gender_of(already[0]) if already else None
@@ -7581,35 +7565,6 @@ with tab3:
                     # ✅ 여기서 한 번 정의해줘야 해
                     score_options_local = SCORE_OPTIONS
 
-                    # -------------------------------------------------
-                    # ✅ (경기기록/통계) 전체 경기 스코어: (복식,코트) 옆에 컬러칩 선수 표시
-                    # -------------------------------------------------
-                    def _gender_chip_class(name: str) -> str:
-                        info = roster_by_name.get(name, {}) or {}
-                        g = (info.get('gender') or info.get('성별') or '').strip()
-                        if g == '여':
-                            return 'msc-chip-f'
-                        if g == '남':
-                            return 'msc-chip-m'
-                        return 'msc-chip-u'
-
-                    def _chips_html(names) -> str:
-                        parts = []
-                        for nm in (names or []):
-                            if not nm:
-                                continue
-                            cls = _gender_chip_class(str(nm))
-                            parts.append(f"<span class='msc-chip {cls}'>{_html.escape(str(nm))}</span>")
-                        return ''.join(parts)
-
-                    def _match_chips_html(team1, team2) -> str:
-                        left = _chips_html(team1)
-                        right = _chips_html(team2)
-                        if not (left or right):
-                            return ''
-                        return f"{left}<span class='msc-vs'>vs</span>{right}"
-
-
                     # 실제 게임들
                     for local_no, (idx, gtype, t1, t2, court) in enumerate(game_list, start=1):
 
@@ -7628,11 +7583,6 @@ with tab3:
                         _sep_css = "border-top:1px solid #e5e7eb;" if _show_sep else "border-top:none;"
                         _top_css = "margin-top:0.6rem; padding-top:0.4rem;" if _show_sep else "margin-top:0.25rem; padding-top:0.15rem;"
 
-                        # ✅ 전체 경기 스코어 블록에서만: (복식,코트) 옆에 팀 컬러칩 표시
-                        _chips = ''
-                        if '전체 경기 스코어' in str(title):
-                            _chips = _match_chips_html(t1, t2)
-                        
                         st.markdown(
                             f"""
                             <div style="
@@ -7640,15 +7590,12 @@ with tab3:
                                 {_sep_css}
                                 margin-bottom:0.18rem;
                             ">
-                              <div class='msc-gamehead'>
-                                <div>
-                                  <span style='font-weight:600; font-size:0.96rem;'>게임 {local_no}</span>
-                                  <span style='font-size:0.82rem; color:#6b7280; margin-left:6px;'>
+                                <span style="font-weight:600; font-size:0.96rem;">
+                                    게임 {local_no}
+                                </span>
+                                <span style="font-size:0.82rem; color:#6b7280; margin-left:6px;">
                                     ({gtype}{', 코트 ' + str(court) if court else ''})
-                                  </span>
-                                </div>
-                                <div class='msc-chip-wrap'>{_chips}</div>
-                              </div>
+                                </span>
                             </div>
                             """,
                             unsafe_allow_html=True,
@@ -9625,9 +9572,5 @@ with tab5:
 # ✅ 모든 탭 공통 푸터
 # =========================================================
 render_footer()
-
-
-
-
 
 
