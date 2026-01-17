@@ -8,6 +8,7 @@ import math
 import os
 import random
 import re
+import html as _html
 from collections import Counter, defaultdict
 from datetime import date
 from itertools import combinations
@@ -17,7 +18,6 @@ import plotly.express as px
 import requests
 import streamlit as st
 import streamlit.components.v1 as components
-import html as _html
 
 
 # =========================================================
@@ -155,97 +155,16 @@ def github_upsert_json_file(
 
 
 # ---------------------------------------------------------
-# ✅ PC/모바일 자동 전환 (쿼리파라미터 기반)
-#   - JS가 접속 기기 감지 → ?msc_mobile=1(모바일) / 0(PC) 로 맞춰줌
-#   - 강제 고정: ?msc_force_mobile=1 (모바일 고정) / 0 (PC 고정)
-# ---------------------------------------------------------
-
-def _get_query_params_dict():
-    """streamlit 버전 호환 (st.query_params / experimental_get_query_params)"""
-    try:
-        qp = dict(st.query_params)  # type: ignore[attr-defined]
-        # st.query_params는 값이 문자열 1개로 옴
-        return {k: (v if isinstance(v, str) else (v[0] if isinstance(v, list) and v else "")) for k, v in qp.items()}
-    except Exception:
-        try:
-            qp = st.experimental_get_query_params()
-            return {k: (v[0] if isinstance(v, list) and v else "") for k, v in qp.items()}
-        except Exception:
-            return {}
-
-
-
-
-def _set_query_params_dict(new_params: dict):
-    """streamlit 버전 호환 (st.query_params / experimental_set_query_params)"""
-    # 빈 문자열 값은 제거(쿼리 깔끔하게)
-    cleaned = {k: v for k, v in (new_params or {}).items() if str(v).strip() != ""}
-    try:
-        # st.query_params는 dict처럼 assign 가능
-        st.query_params.clear()  # type: ignore[attr-defined]
-        for k, v in cleaned.items():
-            st.query_params[k] = str(v)  # type: ignore[attr-defined]
-    except Exception:
-        try:
-            st.experimental_set_query_params(**{k: str(v) for k, v in cleaned.items()})
-        except Exception:
-            # 마지막 fallback: 아무것도 못 하면 무시
-            pass
-
-
-def _qp_force_mode() -> str:
-    """'auto' | 'pc' | 'mobile'"""
-    qp = _get_query_params_dict()
-    force = str(qp.get('msc_force_mobile', '')).strip().lower()
-    if force in ('1', 'true', 'yes', 'y', 'on'):
-        return 'mobile'
-    if force in ('0', 'false', 'no', 'n', 'off'):
-        return 'pc'
-    return 'auto'
-def _detect_mobile_from_qp() -> bool:
-    qp = _get_query_params_dict()
-
-    force = str(qp.get('msc_force_mobile', '')).strip().lower()
-    if force in ('1', 'true', 'yes', 'y', 'on'):
-        return True
-    if force in ('0', 'false', 'no', 'n', 'off'):
-        return False
-
-    m = str(qp.get('msc_mobile', '')).strip().lower()
-    return m in ('1', 'true', 'yes', 'y', 'on')
-
-
-MOBILE_AUTO = _detect_mobile_from_qp()
-
-# ---------------------------------------------------------
 # Streamlit 초기화 (✅ 딱 1번만 / 제일 위에서)
 # ---------------------------------------------------------
 st.set_page_config(
     page_title=APP_TITLE,
-    # ✅ PC는 centered(가로 폭 제한), 모바일은 wide(전체 폭)
-    # - 스코어보드/옵저버도 PC로 열면 관리자 PC 레이아웃처럼 보여야 함
-    layout=("wide" if MOBILE_AUTO else "centered"),
+    layout=("wide" if IS_OBSERVER else "centered"),
     initial_sidebar_state="collapsed",
 )
 
 st.markdown("""
 <style>
-/* Layout widths: desktop is constrained, mobile is full width */
-@media (min-width: 901px) {
-  section.main > div.block-container {
-    max-width: 980px !important;
-    padding-left: 1.2rem !important;
-    padding-right: 1.2rem !important;
-  }
-}
-@media (max-width: 900px) {
-  section.main > div.block-container {
-    max-width: 100% !important;
-    padding-left: 0.8rem !important;
-    padding-right: 0.8rem !important;
-  }
-}
-
 .msc-scroll-x{
   width:100%;
   overflow-x:auto;
@@ -260,78 +179,16 @@ st.markdown("""
   white-space:nowrap;
 }
 
-/* ✅ 수동 대진(직접 배정) 헤더: 코트 옆 컬러칩을 '좌측 정렬'로 붙이기 */
-.msc-gamehead{
-  display:flex;
-  align-items:center;
-  justify-content:flex-start;
-  gap:10px;
-  flex-wrap:wrap;
-}
-.msc-chip-wrap{
-  display:flex;
-  align-items:center;
-  justify-content:flex-start;
-  gap:6px;
-  flex-wrap:wrap;
-}
-.msc-chip{
-  display:inline-block;
-  padding:4px 10px;
-  border-radius:999px;
-  font-size:0.85rem;
-  font-weight:800;
-  line-height:1.1;
-  color:#111827;
-}
-.msc-chip-m{ background:#cce8ff; }
-.msc-chip-f{ background:#ffd6d6; }
-.msc-chip-u{ background:#e5e7eb; }
-.msc-vs{
-  display:inline-block;
-  margin:0 6px;
-  color:#6b7280;
-  font-weight:900;
-}
+.msc-gamehead{display:flex; align-items:center; justify-content:flex-start; gap:10px; flex-wrap:wrap;}
+.msc-chip-wrap{display:flex; align-items:center; justify-content:flex-start; gap:6px; flex-wrap:wrap;}
+.msc-vs{display:inline-block; margin:0 6px; font-weight:900; font-size:0.78rem; color:#6b7280;}
+.msc-chip{display:inline-block; padding:4px 10px; border-radius:999px; font-size:0.78rem; font-weight:800; line-height:1;}
+.msc-chip-m{background:#dbeafe; color:#1e40af;}
+.msc-chip-f{background:#ffe4e6; color:#be123c;}
+.msc-chip-u{background:#e5e7eb; color:#374151;}
+
 </style>
 """, unsafe_allow_html=True)
-
-
-# ✅ 반응형 폭/여백 (PC는 가로 폭 제한, 모바일은 꽉 차게)
-MSC_RESPONSIVE_WIDTH_CSS = """
-<style>
-/* 기본: PC 웹(가로 폭 제한) */
-.msc-desktop .block-container {
-  max-width: 980px !important;
-  padding-left: 1.3rem !important;
-  padding-right: 1.3rem !important;
-}
-
-/* 모바일: 전체 폭 + 여백 최소 */
-.msc-mobile .block-container {
-  max-width: 100% !important;
-  padding-left: 0.65rem !important;
-  padding-right: 0.65rem !important;
-}
-</style>
-"""
-
-# body에 모드 클래스 부여
-msc_body_cls = "msc-mobile" if MOBILE_AUTO else "msc-desktop"
-components.html(
-    f"""
-<script>
-(function(){{
-  const doc = window.parent?.document || document;
-  doc.body.classList.remove('msc-mobile','msc-desktop');
-  doc.body.classList.add('{msc_body_cls}');
-}})();
-</script>
-""",
-    height=0,
-)
-
-st.markdown(MSC_RESPONSIVE_WIDTH_CSS, unsafe_allow_html=True)
 
 
 def safe_rerun():
@@ -339,38 +196,6 @@ def safe_rerun():
         st.rerun()
     elif hasattr(st, "experimental_rerun"):
         st.experimental_rerun()
-
-components.html(
-    """
-<script>
-(function(){
-  try {
-    const win = window.parent || window;
-    const url = new URL(win.location.href);
-    const params = url.searchParams;
-
-    // If user forces a mode, do nothing.
-    const force = (params.get('msc_force_mobile') || '').trim();
-    if (force === '1' || force === '0') return;
-
-    const isMobile = (
-      win.matchMedia && win.matchMedia('(max-width: 900px)').matches
-    ) || /Android|iPhone|iPad|iPod/i.test(win.navigator.userAgent);
-
-    const desired = isMobile ? '1' : '0';
-    const cur = (params.get('msc_mobile') || '').trim();
-
-    if (cur !== desired) {
-      params.set('msc_mobile', desired);
-      url.search = params.toString();
-      win.location.replace(url.toString());
-    }
-  } catch (e) {}
-})();
-</script>
-""",
-    height=0,
-)
 
 
 components.html(
@@ -454,7 +279,6 @@ components.html(
 """,
     height=0,
 )
-
 
 components.html("""
 <script>
@@ -3472,11 +3296,18 @@ roster_by_name = {p["name"]: p for p in roster}
 
 st.title(f"🎾 {APP_TITLE}")
 
-# ✅ PC/모바일 자동 감지: JS가 ?msc_mobile=1/0 를 세팅함
-# - 스코어보드/옵저버도 "기기" 기준으로만 분기해야
-#   PC에서는 관리자 PC 레이아웃처럼 보임
-mobile_mode = bool(MOBILE_AUTO)
-st.session_state["mobile_mode"] = mobile_mode
+# 📱 옵저버/스코어보드: 무조건 모바일 최적화 ON (체크박스도 숨김)
+if IS_OBSERVER:
+    mobile_mode = True
+    st.session_state["mobile_mode"] = True
+else:
+    # 일반(관리자) 모드에서만 토글 제공
+    mobile_mode = st.checkbox(
+        "📱 모바일 최적화 모드",
+        value=True,
+        help="핸드폰으로 볼 때 켜 두는 걸 추천!"
+    )
+    st.session_state["mobile_mode"] = mobile_mode
 
 
 MOBILE_SCORE_ROW_CSS = """
@@ -4344,11 +4175,9 @@ def render_tab_today_session(tab):
 
         def _make_on_change_validator(r: int, key: str, court_count: int, gtype: str):
             def _cb():
-                # 이전 값(중복 선택 시 롤백용)
-                prev_val = st.session_state.get(f"_prev_{key}", "선택")
                 cur = st.session_state.get(key, "선택")
 
-                # 사용자가 비웠으면: 다음 자동 채우기에서 다시 채울 수 있게 두고 종료
+                # ✅ 사용자가 직접 만지면(선택/해제) 해당 슬롯은 '수동 잠금'으로 간주 → auto 플래그 해제
                 if not cur or cur == "선택":
                     st.session_state[f"_prev_{key}"] = "선택"
                     st.session_state[f"_auto_{key}"] = False
@@ -4359,15 +4188,11 @@ def render_tab_today_session(tab):
                     if k == key:
                         continue
                     if st.session_state.get(k, "선택") == cur:
-                        st.session_state[key] = prev_val
+                        st.session_state[key] = st.session_state.get(f"_prev_{key}", "선택")
                         return
 
-                # ✅ 사용자가 건드린 슬롯은 이후 '빈칸 자동 채우기'에서 교체 대상이 되지 않게 처리
-                #    (_fill_round_plan에서 _auto_=True 인 슬롯만 교체 대상으로 간주)
-                if cur != prev_val:
-                    st.session_state[f"_auto_{key}"] = False
-
                 st.session_state[f"_prev_{key}"] = cur
+                st.session_state[f"_auto_{key}"] = False
 
             return _cb
 
@@ -4731,48 +4556,8 @@ def render_tab_today_session(tab):
                     used.add(p)
                     auto_keys.add(k)
 
-                # ✅ 혼합(남+여) 옵션: 2남2여가 모여도 (남남 vs 여여)로 배치될 수 있음
-                #    -> 슬롯(1~4) 내에서 가능한 범위(수동 고정 슬롯은 제외)에서 스왑해서
-                #       "남,여 vs 남,여" 형태로 강제
-                if gender_mode == "혼합":
-                    final_vals = []
-                    for _k, _v_eff in zip(ks, eff_vs):
-                        final_vals.append(plan.get(_k, _v_eff))
-
-                    if all(v != "선택" for v in final_vals):
-                        def _same_gender_team(team):
-                            return _gender_of(team[0]) == _gender_of(team[1])
-
-                        t1_now = final_vals[:2]
-                        t2_now = final_vals[2:4]
-
-                        if _same_gender_team(t1_now) and _same_gender_team(t2_now):
-                            # 팀 간에 1명씩 교환하면 혼복 형태가 된다.
-                            swap_candidates = [(1, 2), (1, 3), (0, 2), (0, 3)]
-
-                            for a, b in swap_candidates:
-                                # 수동 고정(keep_mask=True) 슬롯은 건드리지 않음
-                                if keep_mask[a] or keep_mask[b]:
-                                    continue
-
-                                cand = list(final_vals)
-                                cand[a], cand[b] = cand[b], cand[a]
-
-                                if (not _same_gender_team(cand[:2])) and (not _same_gender_team(cand[2:4])):
-                                    # 스왑 반영
-                                    for j, _k in enumerate(ks):
-                                        if keep_mask[j]:
-                                            continue
-                                        if cand[j] != final_vals[j]:
-                                            plan[_k] = cand[j]
-                                            auto_keys.add(_k)
-                                    break
-
             return plan, auto_keys
 
-        # =========================================================
-        # ✅ 조별 분리 대진 생성용 헬퍼
-        # =========================================================
         def _split_players_ab(players, roster_by_name):
             a = [p for p in players if roster_by_name.get(p, {}).get("group") == "A조"]
             b = [p for p in players if roster_by_name.get(p, {}).get("group") == "B조"]
@@ -6237,6 +6022,7 @@ def render_tab_today_session(tab):
         # =========================================================
         # 5. 대진표 생성 / 미리보기 / 저장  (✅ 자동/수동 공통 영역)
         # =========================================================
+        st.markdown("---")
         st.subheader("5. 대진표 생성 / 미리보기")
 
         col_gen, col_edit, col_save = st.columns(3)
@@ -6934,10 +6720,8 @@ with tab3:
                                     if nm:
                                         playing.add(nm)
 
-                                # ✅ 텍스트 복사용 포맷: "A, B vs C, D"가 아니라
-                                #    "A,BvsC,D"처럼 팀 내는 쉼표로, vs 주변은 공백 없이
                                 lines.append(
-                                    f"{round_no}게임{court_no}코트 {_team_join(t1)}vs{_team_join(t2)}"
+                                    f"{round_no}게임{court_no}코트 {_team_join(t1)} vs {_team_join(t2)}"
                                 )
 
                             bench = [nm for nm in all_names if nm not in playing]
@@ -7738,33 +7522,35 @@ with tab3:
 
                         all_players = list(t1) + list(t2)
 
-                        # ✅ 게임별 한 줄 요약(팀+스코어) - PC/모바일 공통 (이름은 성별 칩)
-                        _s1_txt = "" if prev_s1 is None else str(prev_s1)
-                        _s2_txt = "" if prev_s2 is None else str(prev_s2)
-                        st.markdown(
-                            f"""
-                            <div style="
-                                margin-top:-4px;
-                                margin-bottom:6px;
-                                font-size:0.84rem;
-                                color:#111827;
-                                display:flex;
-                                align-items:center;
-                                gap:6px;
-                                flex-wrap:nowrap;
-                                white-space:nowrap;
-                                overflow-x:auto;
-                                -webkit-overflow-scrolling:touch;
-                            ">
-                                <span style="display:inline-flex; gap:4px;">{render_name_pills(list(t1))}</span>
-                                <span style="font-weight:800; padding:0 2px;">{_s1_txt}</span>
-                                <span style="color:#6b7280; font-weight:700;">vs</span>
-                                <span style="font-weight:800; padding:0 2px;">{_s2_txt}</span>
-                                <span style="display:inline-flex; gap:4px;">{render_name_pills(list(t2))}</span>
-                            </div>
-                            """,
-                            unsafe_allow_html=True,
-                        )
+                        # ✅ 모바일: 게임별 한 줄 요약(팀+스코어)
+                        if mobile_mode:
+                            try:
+                                _t1_inline = ", ".join([str(x) for x in t1])
+                                _t2_inline = ", ".join([str(x) for x in t2])
+                            except Exception:
+                                _t1_inline = " ".join(map(str, t1))
+                                _t2_inline = " ".join(map(str, t2))
+                            _s1_txt = "" if prev_s1 is None else str(prev_s1)
+                            _s2_txt = "" if prev_s2 is None else str(prev_s2)
+                            st.markdown(
+                                f"""
+                                <div style="
+                                    margin-top:-4px;
+                                    margin-bottom:6px;
+                                    font-size:0.82rem;
+                                    color:#111827;
+                                    white-space:nowrap;
+                                    overflow-x:auto;
+                                    -webkit-overflow-scrolling:touch;
+                                ">
+                                    {_t1_inline} <span style="font-weight:800;">{_s1_txt}</span>
+                                    <span style="color:#6b7280;font-weight:600;"> vs </span>
+                                    <span style="font-weight:800;">{_s2_txt}</span> {_t2_inline}
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
+
 
                         # 1) 복식(2:2) → 사이드는 항상 수정 가능, 점수만 잠금
                         # 1) 복식(2:2) → 사이드는 라디오, 점수는 잠금만 적용
