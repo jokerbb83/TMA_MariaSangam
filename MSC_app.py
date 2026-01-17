@@ -8496,6 +8496,9 @@ with tab4:
 with tab5:
     section_card("월별 통계", "📆")
 
+
+
+
     if not sessions:
         st.info("저장된 기록이 없습니다.")
     else:
@@ -8512,15 +8515,22 @@ with tab5:
             reverse=True,  # ✅ 최신 -> 과거
         )
         
-        # ✅ 항상 최신월을 기본 선택으로 (기존 선택값이 없거나 목록에 없으면 최신으로)
-        if "sel_month" not in st.session_state or st.session_state["sel_month"] not in months:
-            st.session_state["sel_month"] = months[0]
+        if not months:
+            st.info("월별로 표시할 기록이 없습니다.")
+        else:
+            # ✅ 항상 최신월을 기본 선택으로 (기존 선택값이 없거나 목록에 없으면 최신으로)
+            if "sel_month" not in st.session_state or st.session_state["sel_month"] not in months:
+                st.session_state["sel_month"] = months[0]
         
-        sel_month = st.selectbox(
-            "월 선택 (YYYY-MM)",
-            months,
-            key="sel_month",
-        )
+            sel_month = st.selectbox(
+                "월 선택 (YYYY-MM)",
+                months,
+                key="sel_month",
+            )
+        
+        
+
+
 
 
             # ---------------------------------------------------------
