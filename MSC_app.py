@@ -157,9 +157,43 @@ def github_upsert_json_file(
 # ---------------------------------------------------------
 # Streamlit 초기화 (✅ 딱 1번만 / 제일 위에서)
 # ---------------------------------------------------------
+
+# ---------------------------------------------------------
+# ✅ 기기(PC/모바일) 자동 감지: URL 쿼리파라미터(msc_mobile=1)를 기준으로 UI 분기
+#   - JS가 접속 기기를 감지해서 msc_mobile 값을 자동으로 맞춰줌
+#   - 필요하면 URL에 msc_force_mobile=1(모바일 강제) / 0(PC 강제)로 고정 가능
+# ---------------------------------------------------------
+def _get_query_param_single(name: str, default: str | None = None) -> str | None:
+    try:
+        qp = st.query_params
+        v = qp.get(name, default)
+        if isinstance(v, list):
+            return v[0] if v else default
+        return v
+    except Exception:
+        try:
+            qp = st.experimental_get_query_params()
+            v = qp.get(name, [default])
+            if isinstance(v, list):
+                return v[0] if v else default
+            return v
+        except Exception:
+            return default
+
+def _truthy(v: str | None) -> bool:
+    if v is None:
+        return False
+    return str(v).strip().lower() in ("1", "true", "yes", "y", "on")
+
+_FORCE_MOBILE_PARAM = _get_query_param_single("msc_force_mobile", None)
+if _FORCE_MOBILE_PARAM is not None:
+    DETECTED_MOBILE = _truthy(_FORCE_MOBILE_PARAM)
+else:
+    DETECTED_MOBILE = _truthy(_get_query_param_single("msc_mobile", "0"))
+
 st.set_page_config(
     page_title=APP_TITLE,
-    layout=("wide" if IS_OBSERVER else "centered"),
+    layout=("centered" if DETECTED_MOBILE else "wide"),
     initial_sidebar_state="collapsed",
 )
 
@@ -196,6 +230,51 @@ def safe_rerun():
         st.rerun()
     elif hasattr(st, "experimental_rerun"):
         st.experimental_rerun()
+
+# ---------------------------------------------------------
+# ✅ PC/모바일 자동 전환 (URL 쿼리파라미터 msc_mobile=1 자동 세팅)
+#   - msc_force_mobile가 있으면 자동 전환을 하지 않음(강제 고정)
+# ---------------------------------------------------------
+components.html(
+    """
+<script>
+(function () {
+  const win = window.parent;
+  if (!win) return;
+
+  function isMobile(){
+    try {
+      return win.matchMedia('(max-width: 900px)').matches ||
+             /Android|iPhone|iPad|iPod/i.test(win.navigator.userAgent);
+    } catch(e) { return false; }
+  }
+
+  const url = new URL(win.location.href);
+  const sp = url.searchParams;
+
+  // ✅ 강제 고정이 있으면 자동 전환 안 함
+  if (sp.has('msc_force_mobile')) return;
+
+  const want = isMobile() ? '1' : null;
+  const cur = sp.get('msc_mobile');
+
+  let changed = false;
+  if (want === '1') {
+    if (cur !== '1') { sp.set('msc_mobile', '1'); changed = true; }
+  } else {
+    if (cur) { sp.delete('msc_mobile'); changed = true; }
+  }
+
+  if (changed) {
+    // replace로 히스토리 꼬임 최소화
+    win.location.replace(url.toString());
+  }
+})();
+</script>
+""",
+    height=0,
+)
+
 
 
 components.html(
@@ -3296,18 +3375,13 @@ roster_by_name = {p["name"]: p for p in roster}
 
 st.title(f"🎾 {APP_TITLE}")
 
-# 📱 옵저버/스코어보드: 무조건 모바일 최적화 ON (체크박스도 숨김)
-if IS_OBSERVER:
-    mobile_mode = True
-    st.session_state["mobile_mode"] = True
+# 📱 PC/모바일 자동 전환: 기기 감지(또는 msc_force_mobile)로 mobile_mode 결정
+_force_mobile = _get_query_param_single("msc_force_mobile", None)
+if _force_mobile is not None:
+    mobile_mode = _truthy(_force_mobile)
 else:
-    # 일반(관리자) 모드에서만 토글 제공
-    mobile_mode = st.checkbox(
-        "📱 모바일 최적화 모드",
-        value=True,
-        help="핸드폰으로 볼 때 켜 두는 걸 추천!"
-    )
-    st.session_state["mobile_mode"] = mobile_mode
+    mobile_mode = bool(DETECTED_MOBILE)
+st.session_state["mobile_mode"] = mobile_mode
 
 
 MOBILE_SCORE_ROW_CSS = """
