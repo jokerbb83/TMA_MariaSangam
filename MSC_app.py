@@ -266,6 +266,24 @@ if IS_OBSERVER:
 
 st.markdown("""
 <style>
+/* ✅ 상단 타이틀(로고/앱명) 위 여백 축소 */
+[data-testid="stAppViewContainer"] .block-container{
+  padding-top: 0.9rem !important;
+}
+[data-testid="stAppViewContainer"] h1{
+  margin-top: 0.15rem !important;
+  margin-bottom: 0.9rem !important;
+}
+@media (max-width: 900px){
+  [data-testid="stAppViewContainer"] .block-container{
+    padding-top: 0.55rem !important;
+  }
+  [data-testid="stAppViewContainer"] h1{
+    margin-top: 0.05rem !important;
+    margin-bottom: 0.7rem !important;
+  }
+}
+
 .msc-scroll-x{
   width:100%;
   overflow-x:auto;
@@ -2046,7 +2064,7 @@ def get_daily_fortune(sel_player):
     rackets = ["윌슨", "요넥스", "헤드", "바볼랏", "던롭"]
     ages = ["20대", "30대", "40대", "50대"]
     hands = ["오른손", "왼손"]
-    proplayer = ["페더러","나달","조코비치","야닉시너","알카라즈","손흥민","메시","마이클조던","오타니","이재용","젠슨황","무하마드 알리","타이거 우즈","도널드 트럼프","일론 머스크","샤라포바"]
+    proplayer = ["페더러","나달","조코비치","정현","신산희","권순우","야닉시너","알카라즈","손흥민","메시","마이클조던","오타니","이재용","젠슨황","무하마드 알리","타이거 우즈","도널드 트럼프","일론 머스크","샤라포바"]
 
     today = datetime.date.today().strftime("%Y%m%d")
 
@@ -6956,8 +6974,10 @@ with tab3:
                                 wrapper.style.left = "-100000px";
                                 wrapper.style.top = "0";
                                 wrapper.style.background = "#ffffff";
-                                wrapper.style.width = (common.clientWidth || 1200) + "px";
-                                wrapper.style.padding = "0";
+                                const PAD = 24;
+                                wrapper.style.boxSizing = "border-box";
+                                wrapper.style.width = ((common.clientWidth || 1200) + (PAD*2)) + "px";
+                                wrapper.style.padding = PAD + "px";
                                 wrapper.style.margin = "0";
 
                                 for (let i = si + 1; i < ei; i++) {{
@@ -7209,8 +7229,10 @@ with tab3:
                                 wrapper.style.left = "-100000px";
                                 wrapper.style.top = "0";
                                 wrapper.style.background = "#ffffff";
-                                wrapper.style.width = (common.clientWidth || 1200) + "px";
-                                wrapper.style.padding = "0";
+                                const PAD = 24;
+                                wrapper.style.boxSizing = "border-box";
+                                wrapper.style.width = ((common.clientWidth || 1200) + (PAD*2)) + "px";
+                                wrapper.style.padding = PAD + "px";
                                 wrapper.style.margin = "0";
 
                                 for (let i = si + 1; i < ei; i++) {{
