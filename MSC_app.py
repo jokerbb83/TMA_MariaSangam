@@ -3471,58 +3471,13 @@ roster_by_name = {p["name"]: p for p in roster}
 
 st.title(f"🎾 {APP_TITLE}")
 
-# 📱 화면 모드: 자동(기기 감지) / PC 강제 / 모바일 강제
-# - 옵저버/스코어보드: 무조건 모바일 최적화 ON
+# ✅ PC/모바일 자동 감지: JS가 ?msc_mobile=1/0 를 세팅함
+# - 옵저버/스코어보드: 무조건 모바일 최적화
 if IS_OBSERVER:
     mobile_mode = True
-    st.session_state["mobile_mode"] = True
 else:
-    def _rerun_now():
-        if hasattr(st, "rerun"):
-            st.rerun()
-        elif hasattr(st, "experimental_rerun"):
-            st.experimental_rerun()
-
-    qp = _get_query_params_dict()
-    cur_mode = _qp_force_mode()  # auto|pc|mobile
-
-    # UI: PC/모바일 강제
-    _mode_map = {"자동": "auto", "PC 강제": "pc", "모바일 강제": "mobile"}
-    _inv_map = {v: k for k, v in _mode_map.items()}
-    default_label = _inv_map.get(cur_mode, "자동")
-
-    cols = st.columns([1.2, 8.8])
-    with cols[0]:
-        st.markdown("&nbsp;", unsafe_allow_html=True)
-    with cols[1]:
-        picked_label = st.radio(
-            "화면 모드",
-            ["자동", "PC 강제", "모바일 강제"],
-            index=["자동", "PC 강제", "모바일 강제"].index(default_label),
-            horizontal=True,
-            key="msc_force_mode_radio",
-            label_visibility="collapsed",
-        )
-
-    picked = _mode_map.get(picked_label, "auto")
-    if picked != cur_mode:
-        if picked == "auto":
-            # 강제 해제(자동)
-            qp.pop("msc_force_mobile", None)
-            # msc_mobile은 JS가 기기에 맞게 유지/갱신
-        elif picked == "pc":
-            qp["msc_force_mobile"] = "0"
-            qp["msc_mobile"] = "0"
-        else:
-            qp["msc_force_mobile"] = "1"
-            qp["msc_mobile"] = "1"
-
-        _set_query_params_dict(qp)
-        _rerun_now()
-
-    # ✅ 최종 모바일 모드 결정
-    mobile_mode = (picked == "mobile") or (picked == "auto" and MOBILE_AUTO)
-    st.session_state["mobile_mode"] = mobile_mode
+    mobile_mode = bool(MOBILE_AUTO)
+st.session_state["mobile_mode"] = mobile_mode
 
 
 MOBILE_SCORE_ROW_CSS = """
@@ -4390,9 +4345,14 @@ def render_tab_today_session(tab):
 
         def _make_on_change_validator(r: int, key: str, court_count: int, gtype: str):
             def _cb():
+                # 이전 값(중복 선택 시 롤백용)
+                prev_val = st.session_state.get(f"_prev_{key}", "선택")
                 cur = st.session_state.get(key, "선택")
+
+                # 사용자가 비웠으면: 다음 자동 채우기에서 다시 채울 수 있게 두고 종료
                 if not cur or cur == "선택":
                     st.session_state[f"_prev_{key}"] = "선택"
+                    st.session_state[f"_auto_{key}"] = False
                     return
 
                 # 같은 라운드 내 중복 선택 방지
@@ -4400,8 +4360,13 @@ def render_tab_today_session(tab):
                     if k == key:
                         continue
                     if st.session_state.get(k, "선택") == cur:
-                        st.session_state[key] = st.session_state.get(f"_prev_{key}", "선택")
+                        st.session_state[key] = prev_val
                         return
+
+                # ✅ 사용자가 건드린 슬롯은 이후 '빈칸 자동 채우기'에서 교체 대상이 되지 않게 처리
+                #    (_fill_round_plan에서 _auto_=True 인 슬롯만 교체 대상으로 간주)
+                if cur != prev_val:
+                    st.session_state[f"_auto_{key}"] = False
 
                 st.session_state[f"_prev_{key}"] = cur
 
