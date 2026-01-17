@@ -158,7 +158,7 @@ def github_upsert_json_file(
 # ---------------------------------------------------------
 st.set_page_config(
     page_title=APP_TITLE,
-    layout="centered",
+    layout=("wide" if IS_OBSERVER else "centered"),
     initial_sidebar_state="collapsed",
 )
 
@@ -361,6 +361,7 @@ components.html("""
 })();
 </script>
 """, height=0)
+
 
 # ---------------------------------------------------------
 # ✅ Streamlit 상/하단 크레딧/툴바 숨김 CSS
