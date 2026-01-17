@@ -179,8 +179,9 @@ st.markdown("""
   white-space:nowrap;
 }
 
-.msc-gamehead{display:flex; align-items:center; justify-content:space-between; gap:10px;}
-.msc-chip-wrap{display:flex; align-items:center; justify-content:flex-end; gap:6px; flex-wrap:wrap;}
+.msc-gamehead{display:flex; align-items:center; justify-content:flex-start; gap:10px; flex-wrap:wrap;}
+.msc-chip-wrap{display:flex; align-items:center; justify-content:flex-start; gap:6px; flex-wrap:wrap;}
+.msc-vs{display:inline-block; margin:0 6px; font-weight:900; font-size:0.78rem; color:#6b7280;}
 .msc-chip{display:inline-block; padding:4px 10px; border-radius:999px; font-size:0.78rem; font-weight:800; line-height:1;}
 .msc-chip-m{background:#dbeafe; color:#1e40af;}
 .msc-chip-f{background:#ffe4e6; color:#be123c;}
@@ -4234,6 +4235,23 @@ def render_tab_today_session(tab):
                 parts.append(f"<span class='msc-chip {cls}'>{_html.escape(str(nm))}</span>")
             return ''.join(parts)
 
+        def _match_chips_html(vals, gtype: str) -> str:
+            """현재 선택된 선수들을 팀별 칩으로 렌더 + 팀 사이에 vs 추가"""
+            if not vals:
+                return ""
+            if gtype == "단식":
+                t1 = [vals[0]] if len(vals) >= 1 else []
+                t2 = [vals[1]] if len(vals) >= 2 else []
+            else:
+                t1 = list(vals[:2])
+                t2 = list(vals[2:4])
+
+            left = _chips_html(t1)
+            right = _chips_html(t2)
+            if not (left or right):
+                return ""
+            return f"{left}<span class='msc-vs'>vs</span>{right}"
+
 
         def _ntrp_of(name: str):
             v = roster_by_name.get(name, {}).get("ntrp", None)
@@ -5865,7 +5883,7 @@ def render_tab_today_session(tab):
                     else:
                         _ks = [_manual_key(rr, cc, i, gtype) for i in (1, 2, 3, 4)]
                     _vals = [st.session_state.get(k, '선택') for k in _ks]
-                    _chips = _chips_html(_vals)
+                    _chips = _match_chips_html(_vals, gtype)
                     st.markdown(
                         f"<div class='msc-gamehead'><div style='font-weight:900;'>게임 {gno} · 코트 {cc}</div><div class='msc-chip-wrap'>{_chips}</div></div>",
                         unsafe_allow_html=True,
