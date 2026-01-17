@@ -8496,13 +8496,22 @@ with tab4:
 with tab5:
     section_card("월별 통계", "📆")
 
+
+
+
     if not sessions:
         st.info("저장된 기록이 없습니다.")
     else:
         # ---------------------------------------------------------
         # 0) 월 선택
         # ---------------------------------------------------------
-        months = sorted({d[:7] for d in sessions.keys() if d != "전체"})
+        months = sorted(
+            {
+                d[:7].strip()
+                for d in sessions.keys()
+                if d != "전체" and isinstance(d, str) and len(d) >= 7 and d[4] == "-"
+            }
+        )
         if not months:
             st.info("월별로 표시할 기록이 없습니다.")
         else:
