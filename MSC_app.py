@@ -8510,7 +8510,8 @@ with tab5:
                 d[:7].strip()
                 for d in sessions.keys()
                 if d != "전체" and isinstance(d, str) and len(d) >= 7 and d[4] == "-"
-            }
+            },
+            reverse=True,   # ✅ 최신 -> 과거
         )
         if not months:
             st.info("월별로 표시할 기록이 없습니다.")
