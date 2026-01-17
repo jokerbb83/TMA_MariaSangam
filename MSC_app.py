@@ -165,11 +165,18 @@ st.set_page_config(
 
 # ---------------------------------------------------------
 # ✅ 옵저버/스코어보드: 화면 가로폭 제한(무한히 넓어지는 것 방지)
+#   - Streamlit 버전/DOM에 따라 selector가 달라질 수 있어 여러 selector에 동시 적용
 # ---------------------------------------------------------
 if IS_OBSERVER:
     st.markdown("""
     <style>
-    [data-testid="stAppViewContainer"] .main .block-container{
+    /* ✅ 옵저버/스코어보드: wide에서도 본문 폭 고정 */
+    [data-testid="stMainBlockContainer"],
+    [data-testid="stAppViewContainer"] .main .block-container,
+    [data-testid="stAppViewContainer"] section.main .block-container,
+    [data-testid="stAppViewContainer"] .block-container,
+    section.main .block-container,
+    .block-container{
       max-width: 1200px !important;
       padding-left: 1.2rem !important;
       padding-right: 1.2rem !important;
@@ -4527,35 +4534,114 @@ def render_tab_today_session(tab):
                 avail = [p for p in pool if p not in used]
                 men = [p for p in avail if _gender_of(p) == "남"]
                 women = [p for p in avail if _gender_of(p) == "여"]
-
                 need = len(empty_keys)
                 picks = []
 
                 if gender_mode == "혼합":
-                    already_m = sum(1 for x in already if _gender_of(x) == "남")
-                    already_w = sum(1 for x in already if _gender_of(x) == "여")
+                    # ✅ 혼합(혼성) 복식: (남+여) vs (남+여) 되도록 우선 채움
+                    # - 가능한 경우 팀1/팀2 각각 1남1여를 강제
+                    # - 성비 부족/수동 고정으로 불가하면 남은 풀에서 랜덤 채움(최선)
+                    empty_pos = [i for i, v in enumerate(eff_vs) if v == "선택"]
+                    pos_need = {}  # pos_index(0~3) -> '남'/'여'/None
 
-                    while len(picks) < need:
-                        want_m = (already_m + sum(1 for x in picks if _gender_of(x) == "남")) < 2
-                        want_w = (already_w + sum(1 for x in picks if _gender_of(x) == "여")) < 2
+                    # 팀별 요구 성별 계산
+                    for tpos in ((0, 1), (2, 3)):
+                        fixed_players = [eff_vs[i] for i in tpos if eff_vs[i] != "선택"]
+                        empties = [i for i in tpos if eff_vs[i] == "선택"]
+                        if not empties:
+                            continue
 
-                        if want_m and men:
-                            pick = rng.choice(men) if not ntrp_on else _pick_by_ntrp_closest(men, None, rng=rng)
+                        if len(fixed_players) == 1:
+                            g = _gender_of(fixed_players[0])
+                            req = "여" if g == "남" else ("남" if g == "여" else None)
+                            for ep in empties:
+                                pos_need[ep] = req
+
+                        elif len(fixed_players) == 0:
+                            # 두 칸이 비었으면 남/여 1명씩
+                            if len(empties) == 2:
+                                tmp = list(empties)
+                                rng.shuffle(tmp)
+                                pos_need[tmp[0]] = "남"
+                                pos_need[tmp[1]] = "여"
+                            else:
+                                pos_need[empties[0]] = None
+                        else:
+                            # 이미 2명 다 채워진 팀(수동 고정)
+                            pass
+
+                    pos_pick = {}
+                    # 1) 요구 성별대로 먼저 뽑기
+                    for pos in empty_pos:
+                        req = pos_need.get(pos, None)
+                        pick = None
+                        if req == "남" and men:
+                            pick = rng.choice(men)
                             men.remove(pick)
-                        elif want_w and women:
-                            pick = rng.choice(women) if not ntrp_on else _pick_by_ntrp_closest(women, None, rng=rng)
+                        elif req == "여" and women:
+                            pick = rng.choice(women)
                             women.remove(pick)
                         else:
                             rest = men + women
-                            if not rest:
-                                break
-                            pick = rng.choice(rest) if not ntrp_on else _pick_by_ntrp_closest(rest, None, rng=rng)
-                            if pick in men:
-                                men.remove(pick)
-                            else:
-                                women.remove(pick)
+                            if rest:
+                                pick = rng.choice(rest)
+                                if pick in men:
+                                    men.remove(pick)
+                                else:
+                                    women.remove(pick)
+                        if pick:
+                            pos_pick[pos] = pick
 
-                        picks.append(pick)
+                    # 2) 아직 못 채운 빈칸이 있으면 남은 풀에서 채우기
+                    for pos in empty_pos:
+                        if pos in pos_pick:
+                            continue
+                        rest = men + women
+                        if not rest:
+                            break
+                        pick = rng.choice(rest)
+                        if pick in men:
+                            men.remove(pick)
+                        else:
+                            women.remove(pick)
+                        pos_pick[pos] = pick
+
+                    # empty_keys 순서(ks 순서)대로 picks를 만든다
+                    picks = [pos_pick[i] for i in empty_pos if i in pos_pick]
+
+                    # ✅ 마지막 안전장치: 4명이 모두 채워졌고, 팀이 혼합이 아니면 섞어서 맞춘다(가능할 때)
+                    try:
+                        # 현재 코트의 최종 후보(고정+신규)
+                        final = list(already) + list(picks)
+                        if len(final) == 4:
+                            # 고정된 포지션 정보
+                            fixed_map = {i: eff_vs[i] for i in range(4) if eff_vs[i] != "선택"}
+                            # 남/여 체크
+                            def _is_mixed_team(a,b):
+                                return _gender_of(a) != _gender_of(b)
+
+                            # 남/여가 2:2일 때만 재배치 시도
+                            mcnt = sum(1 for x in final if _gender_of(x) == "남")
+                            wcnt = sum(1 for x in final if _gender_of(x) == "여")
+                            if mcnt == 2 and wcnt == 2:
+                                import itertools as _it
+                                positions = [0,1,2,3]
+                                rem_pos = [p for p in positions if p not in fixed_map]
+                                rem_players = [x for x in final if x not in fixed_map.values()]
+                                best_assign = None
+                                for perm in _it.permutations(rem_players):
+                                    assign = dict(fixed_map)
+                                    for rp, pl in zip(rem_pos, perm):
+                                        assign[rp] = pl
+                                    if (assign.get(0) and assign.get(1) and assign.get(2) and assign.get(3) and
+                                        _is_mixed_team(assign[0], assign[1]) and _is_mixed_team(assign[2], assign[3])):
+                                        best_assign = assign
+                                        break
+                                if best_assign is not None:
+                                    # best_assign 기반으로 empty_pos 순서대로 picks 재구성
+                                    picks = [best_assign[i] for i in empty_pos]
+                    except Exception:
+                        pass
 
                 elif gender_mode == "동성":
                     already_gender = _gender_of(already[0]) if already else None
