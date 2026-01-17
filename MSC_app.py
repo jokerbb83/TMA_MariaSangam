@@ -177,7 +177,7 @@ if IS_OBSERVER:
     [data-testid="stAppViewContainer"] .block-container,
     section.main .block-container,
     .block-container{
-      max-width: 500px !important;
+      max-width: 600px !important;
       padding-left: 1.2rem !important;
       padding-right: 1.2rem !important;
       margin-left: auto !important;
@@ -9625,6 +9625,7 @@ with tab5:
 # ✅ 모든 탭 공통 푸터
 # =========================================================
 render_footer()
+
 
 
 
