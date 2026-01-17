@@ -162,6 +162,25 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+st.markdown("""
+<style>
+.msc-scroll-x{
+  width:100%;
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+}
+.msc-scroll-x { padding-bottom: 6px; }
+.msc-scroll-x table{
+  width:max-content;
+  min-width:100%;
+}
+.msc-scroll-x th, .msc-scroll-x td{
+  white-space:nowrap;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 def safe_rerun():
     if hasattr(st, "rerun"):
         st.rerun()
@@ -1027,7 +1046,8 @@ def _render_mobile_table_html(html: str, *, font_px: int = 11):
     max-width: none !important;
   }}
 </style>
-<div id="{sid}" class="mobile-table-wrap">{html}</div>
+<div id="{sid}" class="mobile-table-wrap msc-scroll-x">{html}</div>
+
         """,
         unsafe_allow_html=True,
     )
@@ -1037,15 +1057,18 @@ def render_static_on_mobile(df_or_styler):
     mobile_mode = st.session_state.get("mobile_mode", False)
 
     if mobile_mode:
-        # ✅ 모바일: 드래그/정렬/스크롤 인터랙션 없는 정적 렌더 + 세로 길이 최적화
         try:
             html = df_or_styler.to_html()
-            _render_mobile_table_html(html, font_px=11)
+            st.markdown(f'<div class="msc-scroll-x">{html}</div>', unsafe_allow_html=True)
         except Exception:
             st.table(df_or_styler)
     else:
-        # ✅ PC: 기존대로 인터랙티브
-        st.dataframe(df_or_styler, use_container_width=True)
+        # 기존 로직 그대로 (너가 smart_table에서 처리한다면 여기 안 써도 됨)
+        try:
+            st.dataframe(df_or_styler, use_container_width=True)
+        except Exception:
+            st.table(df_or_styler)
+
 
 
 def is_mobile():
@@ -1055,24 +1078,29 @@ def is_mobile():
 def smart_table(df_or_styler, *, use_container_width=True):
     """
     ✅ PC: 기존처럼 인터랙티브 dataframe
-    ✅ 모바일: 열 드래그/정렬 등 인터랙션 없는 '고정 표' (세로 길이 최적화)
+    ✅ 모바일(옵저버 포함): 항상 HTML 정적 렌더 + 가로 스크롤 (절대 st.table로 안 떨어짐)
     """
     if is_mobile():
-        # 1) Styler면 HTML로 정적 렌더
+        # 1) Styler면 HTML
         try:
             html = df_or_styler.to_html()
-            _render_mobile_table_html(html, font_px=11)
+            _render_mobile_table_html(html, font_px=11)   # ✅ 내부에서 스크롤 처리
             return
         except Exception:
             pass
 
-        # 2) 일반 DataFrame이면 정적 table
+        # 2) DataFrame이면 HTML로 변환해서 렌더 (✅ st.table 쓰지 않음)
         try:
-            st.table(df_or_styler)
+            html = df_or_styler.to_html(index=True)
+            _render_mobile_table_html(html, font_px=11)
+            return
         except Exception:
             st.write(df_or_styler)
-    else:
-        st.dataframe(df_or_styler, use_container_width=use_container_width)
+            return
+
+    # PC
+    st.dataframe(df_or_styler, use_container_width=use_container_width)
+
 
 
 # ---------------------------------------------------------
@@ -1790,7 +1818,7 @@ def get_daily_fortune(sel_player):
     rackets = ["윌슨", "요넥스", "헤드", "바볼랏", "던롭", "뵐클", "테크니파이버", "프린스"]
     ages = ["20대", "30대", "40대", "50대"]
     hands = ["오른손", "왼손"]
-    proplayer = ["페더러","나달","조코비치","야닉시너","알카라즈","손흥민","메시","마이클조던","오타니","이학수","이재용","젠슨황","무하마드 알리","타이거 우즈","도널드 트럼프","일론 머스크","샤라포바"]
+    proplayer = ["페더러","나달","조코비치","야닉시너","알카라즈","손흥민","메시","마이클조던","오타니","이재용","젠슨황","무하마드 알리","타이거 우즈","도널드 트럼프","일론 머스크","샤라포바"]
 
     today = datetime.date.today().strftime("%Y%m%d")
 
@@ -2515,6 +2543,9 @@ def render_score_summary_table(games, roster_by_name):
         _render_mobile_table_html(table_html, font_px=11)
     else:
         st.markdown(table_html, unsafe_allow_html=True)
+
+
+
 
 def section_card(title: str, emoji: str = "📌"):
     st.markdown(
