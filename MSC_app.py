@@ -5913,7 +5913,7 @@ def render_tab_today_session(tab):
         if is_manual_mode:
             st.markdown("---")
             st.subheader("4-1. 직접 배정(수동) 입력")
-            st.caption("※ 한 라운드 안에서는 같은 선수가 중복 선택되지 않도록 제한됩니다.")
+순위표 보기 방식
 
             # ✅ pending → session_state (위젯 렌더 전에만!)
             _apply_manual_pending()
@@ -6125,7 +6125,7 @@ def render_tab_today_session(tab):
             for (gno, rr, cc) in games:
 
                 # 헤더(체크 + 게임명)
-                h1, h2 = st.columns([0.5, 9.1], vertical_alignment="center")
+                h1, h2 = st.columns([0.3, 9.1], vertical_alignment="center")
                 with h1:
                     st.checkbox(
                         "",
@@ -8530,7 +8530,7 @@ with tab3:
                                                 if k in st.session_state:
                                                     del st.session_state[k]
 
-                                            st.session_state["_flash_day_edit_msg"] = "✅ 게임 순서 교환 완료! (점수도 함께 교환됨)"
+                                            st.session_state["_flash_day_edit_msg"] = "✅ 게임 순서 교환 완료! (점수도 교환됐는지 확인 바람)"
                                             safe_rerun()
 
 # 2. 오늘의 요약 리포트 (자동 생성)
@@ -9202,7 +9202,7 @@ with tab5:
                     # 1. 월간 선수 순위표
                     # =========================================================
                     st.subheader("1. 월간 선수 순위표")
-
+                    st.caption("승=3점, 무=1점, 패=0점")
                     rank_view_mode = st.radio(
                         "순위표 보기 방식",
                         ["전체", "조별 보기 (A/B조)"],
