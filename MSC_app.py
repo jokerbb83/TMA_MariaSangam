@@ -7357,6 +7357,26 @@ with tab3:
                 font-size: 0.92rem !important;
             }
 
+            /* ✅ PC: 점수박스/라디오 균형 정렬 (가로 공간 조화) */
+            .msc-score-row-hb{
+                align-items: center !important;
+                gap: 0.35rem !important;
+            }
+
+            .msc-score-row-hb [data-testid="stSelectbox"]{
+                max-width: 140px !important;
+                margin-left: auto !important;
+                margin-right: auto !important;
+            }
+
+            .msc-score-row-hb [data-testid="stSelectbox"] *{
+                margin-top: 0 !important;
+            }
+
+            .msc-score-row-hb [data-testid="stRadio"]{
+                margin-top: 0 !important;
+            }
+
             /* 너가 이미 쓰는 이름 배지 class */
             .name-badge{
                 white-space: nowrap !important;
@@ -7761,12 +7781,16 @@ with tab3:
                             # 🔹 레이아웃: [왼쪽 라디오] [팀1 점수] [VS] [팀2 점수] [오른쪽 라디오]
                             if mobile_mode:
                                 col_t1_side, col_s1, col_vs, col_s2, col_t2_side = st.columns(
-                                    [2.7, 1.1, 0.7, 1.1, 2.7]
+                                    [2.7, 1.15, 0.55, 1.15, 2.7],
+                                    gap="small",
+                                    vertical_alignment="center",
                                 )
                             else:
-                                # ✅ PC에서는 좌우를 확 넓혀서 이름이 절대 안 꺾이게
+                                # ✅ PC: 좌/우 라디오와 점수 박스 균형(2번째 이미지처럼)
                                 col_t1_side, col_s1, col_vs, col_s2, col_t2_side = st.columns(
-                                    [3.8, 0.9, 0.4, 0.9, 3.8]
+                                    [3.0, 1.15, 0.55, 1.15, 3.0],
+                                    gap="small",
+                                    vertical_alignment="center",
                                 )
 
                             # 왼쪽 팀 (유대한 / 배성균 / 모름)
@@ -7855,9 +7879,17 @@ with tab3:
                                 unsafe_allow_html=True,
                             )
                             if mobile_mode:
-                                cols = st.columns([3, 1, 0.7, 1, 3])
+                                cols = st.columns(
+                                    [2.7, 1.15, 0.55, 1.15, 2.7],
+                                    gap="small",
+                                    vertical_alignment="center",
+                                )
                             else:
-                                cols = st.columns([4, 0.9, 0.4, 0.9, 4])
+                                cols = st.columns(
+                                    [3.0, 1.15, 0.55, 1.15, 3.0],
+                                    gap="small",
+                                    vertical_alignment="center",
+                                )
 
 
                             with cols[0]:
