@@ -366,8 +366,12 @@ components.html(
   }
 
   function patch(){
-    // ✅ (모바일/PC 공통) 점수 입력(라디오+점수+VS+점수+라디오) 줄을 식별해서
-    //    해당 stHorizontalBlock에 클래스 부여 → CSS를 그 줄에만 정확히 적용
+    if(!isMobile()) return;
+
+    doc.querySelectorAll(SEL_SELECT).forEach(hardenSelect);
+    doc.querySelectorAll(SEL_DATE).forEach(softenDate);
+
+    // ✅ 모바일: 점수 입력(라디오+점수+VS+점수+라디오) 한줄 고정
     try {
       const markers = doc.querySelectorAll('.score-row');
       markers.forEach((m) => {
@@ -380,18 +384,10 @@ components.html(
           tries++;
         }
         if (hb && hb.getAttribute('data-testid') === 'stHorizontalBlock') {
-          hb.classList.add('msc-score-row-hb');
-          // ✅ 모바일일 때만 기존 한줄 고정용 클래스도 추가
-          if (isMobile()) hb.classList.add('msa-score-row-hb');
+          hb.classList.add('msa-score-row-hb');
         }
       });
     } catch (e) {}
-
-    // ✅ 모바일 전용: 키보드 차단/달력 입력 예외 처리
-    if(isMobile()){
-      doc.querySelectorAll(SEL_SELECT).forEach(hardenSelect);
-      doc.querySelectorAll(SEL_DATE).forEach(softenDate);
-    }
 
   }
 
@@ -4628,30 +4624,97 @@ def render_tab_today_session(tab):
                 picks = []
 
                 if gender_mode == "혼합":
-                    already_m = sum(1 for x in already if _gender_of(x) == "남")
-                    already_w = sum(1 for x in already if _gender_of(x) == "여")
+                    # ✅ 혼합복식(남+여 vs 남+여) 강제:
+                    #    팀1(슬롯1,2)과 팀2(슬롯3,4) 각각이 (남1+여1)이 되도록 채운다.
+                    key_to_idx = {k: i for i, k in enumerate(ks)}
 
-                    while len(picks) < need:
-                        want_m = (already_m + sum(1 for x in picks if _gender_of(x) == "남")) < 2
-                        want_w = (already_w + sum(1 for x in picks if _gender_of(x) == "여")) < 2
-
-                        if want_m and men:
-                            pick = rng.choice(men) if not ntrp_on else _pick_by_ntrp_closest(men, None, rng=rng)
-                            men.remove(pick)
-                        elif want_w and women:
-                            pick = rng.choice(women) if not ntrp_on else _pick_by_ntrp_closest(women, None, rng=rng)
-                            women.remove(pick)
+                    def _take_from(lst, target_ntrp=None):
+                        if not lst:
+                            return None
+                        if ntrp_on:
+                            pick = _pick_by_ntrp_closest(lst, target_ntrp, rng=rng)
                         else:
-                            rest = men + women
-                            if not rest:
-                                break
-                            pick = rng.choice(rest) if not ntrp_on else _pick_by_ntrp_closest(rest, None, rng=rng)
-                            if pick in men:
-                                men.remove(pick)
-                            else:
-                                women.remove(pick)
+                            pick = rng.choice(lst)
+                        try:
+                            lst.remove(pick)
+                        except Exception:
+                            pass
+                        return pick
 
-                        picks.append(pick)
+                    def _take_any(target_ntrp=None):
+                        rest = men + women
+                        if not rest:
+                            return None
+                        if ntrp_on:
+                            pick = _pick_by_ntrp_closest(rest, target_ntrp, rng=rng)
+                        else:
+                            pick = rng.choice(rest)
+                        if pick in men:
+                            try:
+                                men.remove(pick)
+                            except Exception:
+                                pass
+                        elif pick in women:
+                            try:
+                                women.remove(pick)
+                            except Exception:
+                                pass
+                        return pick
+
+                    # 현재(고정된) 값
+                    fixed = {i: v for i, v in enumerate(eff_vs) if v != "선택"}
+                    pick_for_idx = {}
+
+                    # 팀별(0,1)=팀1 / (2,3)=팀2
+                    for a, b in ((0, 1), (2, 3)):
+                        va = fixed.get(a)
+                        vb = fixed.get(b)
+
+                        # 둘 다 고정이면 건드리지 않음(사용자가 강제로 만든 케이스)
+                        if va and vb:
+                            continue
+
+                        # 한 명만 고정이면 반대 성별 파트너를 채움
+                        if (va and not vb) or (vb and not va):
+                            fixed_name = va if va else vb
+                            empty_i = b if va else a
+                            g = _gender_of(fixed_name)
+                            want = "여" if g == "남" else "남"
+                            cand = women if want == "여" else men
+                            pick = _take_from(cand, _ntrp_of(fixed_name))
+                            if pick is None:
+                                pick = _take_any(_ntrp_of(fixed_name))
+                            if pick:
+                                pick_for_idx[empty_i] = pick
+                            continue
+
+                        # 둘 다 비었으면 남/여 한 명씩 선택
+                        if (not va) and (not vb):
+                            if men and women:
+                                m = _take_from(men, None)
+                                # 여성은 남성의 ntrp에 맞춰 고르면 밸런스가 조금 나아짐
+                                target = _ntrp_of(m) if (ntrp_on and m) else None
+                                f = _take_from(women, target)
+                                if m:
+                                    pick_for_idx[a] = m
+                                if f:
+                                    pick_for_idx[b] = f
+                            else:
+                                p1 = _take_any(None)
+                                p2 = _take_any(_ntrp_of(p1) if (ntrp_on and p1) else None)
+                                if p1:
+                                    pick_for_idx[a] = p1
+                                if p2:
+                                    pick_for_idx[b] = p2
+
+                    # 혹시 남/여 밸런스가 부족해서 아직 못 채운 칸이 있으면, 남은 인원으로라도 채움(최후 fallback)
+                    for k in empty_keys:
+                        ii = key_to_idx[k]
+                        if ii not in pick_for_idx:
+                            pick_for_idx[ii] = _take_any(None)
+
+                    picks = [pick_for_idx.get(key_to_idx[k]) for k in empty_keys]
+
 
                 elif gender_mode == "동성":
                     already_gender = _gender_of(already[0]) if already else None
@@ -4665,6 +4728,8 @@ def render_tab_today_session(tab):
                         picks = rng.sample(rest, need)
 
                 for k, p in zip(empty_keys, picks):
+                    if not p:
+                        continue
                     plan[k] = p
                     used.add(p)
                     auto_keys.add(k)
@@ -7337,50 +7402,34 @@ with tab3:
         if not mobile_mode:
             st.markdown("""
             <style>
-            /* ✅ PC: '전체 경기 스코어' 점수 입력 줄에서만 라디오를 3줄(세로)로 고정 */
-            .msc-score-row-hb [data-testid="stRadio"] [role="radiogroup"]{
+            /* ✅ PC 라디오: 너무 빡센 'nowrap' 제거하고 간격 줄이기 */
+            .stRadio [role="radiogroup"]{
                 display: flex !important;
-                flex-direction: column !important;  /* ✅ 한 옵션 = 한 줄 */
-                flex-wrap: nowrap !important;
-                gap: 0.22rem !important;
-                align-items: flex-start !important;
-            }
-
-            .msc-score-row-hb [data-testid="stRadio"] label{
-                width: 100% !important;
-                gap: 0.28rem !important;
-                padding-right: 0 !important;
-            }
-
-            .msc-score-row-hb [data-testid="stRadio"] label span{
-                white-space: nowrap !important;
-                font-size: 0.92rem !important;
-            }
-
-            /* ✅ PC: 점수박스/라디오 균형 정렬 (가로 공간 조화) */
-            .msc-score-row-hb{
+                flex-direction: row !important;
+                flex-wrap: wrap !important;          /* ✅ 핵심: 겹침 방지 */
+                gap: 0.25rem 0.6rem !important;      /* ✅ 옵션 간 간격 축소 */
                 align-items: center !important;
-                gap: 0.35rem !important;
             }
 
-            .msc-score-row-hb [data-testid="stSelectbox"]{
-                max-width: 140px !important;
-                margin-left: auto !important;
-                margin-right: auto !important;
+            /* ✅ 라디오 동그라미와 텍스트 사이 간격 줄이기 */
+            .stRadio label{
+                gap: 0.25rem !important;
+                padding-right: 0.1rem !important;
             }
 
-            .msc-score-row-hb [data-testid="stSelectbox"] *{
-                margin-top: 0 !important;
-            }
-
-            .msc-score-row-hb [data-testid="stRadio"]{
-                margin-top: 0 !important;
+            .stRadio label span{
+                white-space: nowrap !important;
+                font-size: 0.92rem !important;      /* ✅ 살짝만 줄여서 안정화 */
             }
 
             /* 너가 이미 쓰는 이름 배지 class */
             .name-badge{
                 white-space: nowrap !important;
                 display: inline-block !important;
+            }
+
+            .score-row *{
+                white-space: nowrap !important;
             }
             </style>
             """, unsafe_allow_html=True)
@@ -7608,36 +7657,6 @@ with tab3:
                             return f"🔵 {name}"
                         return name
 
-                    # ✅ 게임 헤더 오른쪽에 붙일 '대진 요약(성별 컬러칩 포함)' HTML
-                    def _chip_html(name: str) -> str:
-                        info = roster_by_name.get(name, {}) or {}
-                        g = info.get("gender") or info.get("성별")
-                        if g == "남":
-                            cls = "msc-chip-m"
-                        elif g == "여":
-                            cls = "msc-chip-f"
-                        else:
-                            cls = "msc-chip-u"
-                        return f"<span class='msc-chip {cls}'>{_html.escape(str(name))}</span>"
-
-                    def _team_summary_html(team) -> str:
-                        parts = []
-                        for i, n in enumerate(list(team)):
-                            if i > 0:
-                                parts.append("<span style='margin:0 2px; font-weight:800; color:#6b7280;'>,</span>")
-                            parts.append(_chip_html(n))
-                        return "".join(parts)
-
-                    def _match_summary_html(t1_team, t2_team) -> str:
-                        return (
-                            "<span class='msc-chip-wrap' "
-                            "style='flex-wrap:nowrap; white-space:nowrap; overflow-x:auto; max-width:100%; -webkit-overflow-scrolling:touch;'>"
-                            f"{_team_summary_html(t1_team)}"
-                            "<span class='msc-vs'>vs</span>"
-                            f"{_team_summary_html(t2_team)}"
-                            "</span>"
-                        )
-
                     # ✅ 여기서 한 번 정의해줘야 해
                     score_options_local = SCORE_OPTIONS
 
@@ -7659,23 +7678,12 @@ with tab3:
                         _sep_css = "border-top:1px solid #e5e7eb;" if _show_sep else "border-top:none;"
                         _top_css = "margin-top:0.6rem; padding-top:0.4rem;" if _show_sep else "margin-top:0.25rem; padding-top:0.15rem;"
 
-                        # ✅ PC: (복식, 코트1) 오른쪽에 대진 요약(성별 컬러칩 포함) 표시
-                        _summary_html = ""
-                        if not mobile_mode:
-                            try:
-                                _summary_html = _match_summary_html(t1, t2)
-                            except Exception:
-                                _summary_html = ""
-
                         st.markdown(
                             f"""
-                            <div class="msc-gamehead" style="
+                            <div style="
                                 {_top_css}
                                 {_sep_css}
                                 margin-bottom:0.18rem;
-                                flex-wrap:nowrap;
-                                overflow-x:auto;
-                                -webkit-overflow-scrolling:touch;
                             ">
                                 <span style="font-weight:600; font-size:0.96rem;">
                                     게임 {local_no}
@@ -7683,7 +7691,6 @@ with tab3:
                                 <span style="font-size:0.82rem; color:#6b7280; margin-left:6px;">
                                     ({gtype}{', 코트 ' + str(court) if court else ''})
                                 </span>
-                                {_summary_html}
                             </div>
                             """,
                             unsafe_allow_html=True,
@@ -7781,16 +7788,12 @@ with tab3:
                             # 🔹 레이아웃: [왼쪽 라디오] [팀1 점수] [VS] [팀2 점수] [오른쪽 라디오]
                             if mobile_mode:
                                 col_t1_side, col_s1, col_vs, col_s2, col_t2_side = st.columns(
-                                    [2.7, 1.15, 0.55, 1.15, 2.7],
-                                    gap="small",
-                                    vertical_alignment="center",
+                                    [2.7, 1.1, 0.7, 1.1, 2.7]
                                 )
                             else:
-                                # ✅ PC: 좌/우 라디오와 점수 박스 균형(2번째 이미지처럼)
+                                # ✅ PC에서는 좌우를 확 넓혀서 이름이 절대 안 꺾이게
                                 col_t1_side, col_s1, col_vs, col_s2, col_t2_side = st.columns(
-                                    [3.0, 1.15, 0.55, 1.15, 3.0],
-                                    gap="small",
-                                    vertical_alignment="center",
+                                    [3.8, 0.9, 0.4, 0.9, 3.8]
                                 )
 
                             # 왼쪽 팀 (유대한 / 배성균 / 모름)
@@ -7879,17 +7882,9 @@ with tab3:
                                 unsafe_allow_html=True,
                             )
                             if mobile_mode:
-                                cols = st.columns(
-                                    [2.7, 1.15, 0.55, 1.15, 2.7],
-                                    gap="small",
-                                    vertical_alignment="center",
-                                )
+                                cols = st.columns([3, 1, 0.7, 1, 3])
                             else:
-                                cols = st.columns(
-                                    [3.0, 1.15, 0.55, 1.15, 3.0],
-                                    gap="small",
-                                    vertical_alignment="center",
-                                )
+                                cols = st.columns([4, 0.9, 0.4, 0.9, 4])
 
 
                             with cols[0]:
