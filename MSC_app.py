@@ -681,38 +681,8 @@ st.markdown("""
     line-height: 1.15 !important;
     white-space: normal !important;   /* 글자 길면 2줄 허용(가로 넘침 방지) */
     word-break: keep-all !important;
-
-
-  /* ✅ 모바일: 4-1 수동배정 셀렉트박스(4명+VS) 한줄 고정 */
-  div[data-testid="stHorizontalBlock"].msc-manual-inline-hb{
-    flex-wrap: nowrap !important;
-    gap: 10px !important;
-    align-items: center !important;
-  }
-  div[data-testid="stHorizontalBlock"].msc-manual-inline-hb > div{
-    flex: 1 1 0 !important;
-    width: 0 !important;
     min-width: 0 !important;
-    max-width: none !important;
-  }
-  /* VS 컬럼은 더 좁게 */
-  div[data-testid="stHorizontalBlock"].msc-manual-inline-hb > div.msc-vs-col{
-    flex: 0 0 2.4rem !important;
-    width: 2.4rem !important;
-  }
-  /* 셀렉트박스 컴팩트 */
-  div[data-testid="stHorizontalBlock"].msc-manual-inline-hb [data-baseweb="select"] > div{
-    min-height: 42px !important;
-    height: 42px !important;
-  }
-  div[data-testid="stHorizontalBlock"].msc-manual-inline-hb [data-baseweb="select"]{
-    font-size: 0.95rem !important;
-  }
-  div[data-testid="stHorizontalBlock"].msc-manual-inline-hb .msc-vs{
-    font-size: 1.05rem !important;
-    font-weight: 900 !important;
-    text-align: center !important;
-  }
+    max-width: 100% !important;
   }
 }
 </style>
@@ -4573,20 +4543,20 @@ def render_tab_today_session(tab):
                 )
                 st.session_state[f"_prev_{key}"] = st.session_state.get(key, "선택")
 
+            mobile_mode = bool(st.session_state.get("mobile_mode", False))
+
             if gtype == "단식":
                 k1 = _manual_key(r, c, 1, gtype)
                 k2 = _manual_key(r, c, 2, gtype)
 
-
                 st.markdown("<div class='msc-manual-row-marker'></div>", unsafe_allow_html=True)
-                col1, colVS, col2 = st.columns([3.2, 0.9, 3.2], vertical_alignment="center")
 
+                # ✅ 단식은 모바일에서도 1줄(좌 vs 우) 유지
+                col1, colVS, col2 = st.columns([3.2, 0.9, 3.2], vertical_alignment="center")
                 with col1:
                     _render_one("p1", k1)
-
                 with colVS:
                     st.markdown("<div class='msc-vs' style='text-align:center; font-weight:900;'>VS</div>", unsafe_allow_html=True)
-
                 with col2:
                     _render_one("p2", k2)
 
@@ -4596,27 +4566,40 @@ def render_tab_today_session(tab):
                 k3 = _manual_key(r, c, 3, gtype)
                 k4 = _manual_key(r, c, 4, gtype)
 
-
                 st.markdown("<div class='msc-manual-row-marker'></div>", unsafe_allow_html=True)
-                col1, col2, colVS, col3, col4 = st.columns(
-                    [2.6, 2.6, 0.9, 2.6, 2.6],
-                    vertical_alignment="center"
-                )
 
-                with col1:
-                    _render_one("t1a", k1)
+                # ✅ 모바일: 5칼럼은 너무 빡빡해서 깨짐 → 같은 편 2명씩 2줄로 (팀1 2명) / VS / (팀2 2명)
+                if mobile_mode:
+                    t1a, t1b = st.columns(2, vertical_alignment="center")
+                    with t1a:
+                        _render_one("t1a", k1)
+                    with t1b:
+                        _render_one("t1b", k2)
 
-                with col2:
-                    _render_one("t1b", k2)
+                    st.markdown("<div class='msc-vs' style='text-align:center; font-weight:900; margin:0.15rem 0 0.2rem 0;'>VS</div>", unsafe_allow_html=True)
 
-                with colVS:
-                    st.markdown("<div class='msc-vs' style='text-align:center; font-weight:900;'>VS</div>", unsafe_allow_html=True)
+                    t2a, t2b = st.columns(2, vertical_alignment="center")
+                    with t2a:
+                        _render_one("t2a", k3)
+                    with t2b:
+                        _render_one("t2b", k4)
 
-                with col3:
-                    _render_one("t2a", k3)
-
-                with col4:
-                    _render_one("t2b", k4)
+                else:
+                    # ✅ PC: 기존 5칼럼 유지
+                    col1, col2, colVS, col3, col4 = st.columns(
+                        [2.6, 2.6, 0.9, 2.6, 2.6],
+                        vertical_alignment="center",
+                    )
+                    with col1:
+                        _render_one("t1a", k1)
+                    with col2:
+                        _render_one("t1b", k2)
+                    with colVS:
+                        st.markdown("<div class='msc-vs' style='text-align:center; font-weight:900;'>VS</div>", unsafe_allow_html=True)
+                    with col3:
+                        _render_one("t2a", k3)
+                    with col4:
+                        _render_one("t2b", k4)
 
         def _manual_gender_to_mode(manual_gender_mode: str) -> str:
             # UI 값("성별랜덤","동성","혼합") → 내부 값("랜덤","동성","혼합")
@@ -4777,14 +4760,19 @@ def render_tab_today_session(tab):
 
                 need = len(empty_keys)
                 picks = []
+                mixed_applied = False
 
                 if gender_mode == "혼합":
+                    # ✅ 목표: 최종 4명이 정해진 뒤 (남+여) vs (남+여)가 되도록 슬롯을 재배치
                     already_m = sum(1 for x in already if _gender_of(x) == "남")
                     already_w = sum(1 for x in already if _gender_of(x) == "여")
 
                     while len(picks) < need:
-                        want_m = (already_m + sum(1 for x in picks if _gender_of(x) == "남")) < 2
-                        want_w = (already_w + sum(1 for x in picks if _gender_of(x) == "여")) < 2
+                        cur_m = already_m + sum(1 for x in picks if _gender_of(x) == "남")
+                        cur_w = already_w + sum(1 for x in picks if _gender_of(x) == "여")
+
+                        want_m = cur_m < 2
+                        want_w = cur_w < 2
 
                         if want_m and men:
                             pick = rng.choice(men) if not ntrp_on else _pick_by_ntrp_closest(men, None, rng=rng)
@@ -4804,7 +4792,68 @@ def render_tab_today_session(tab):
 
                         picks.append(pick)
 
+                    players4 = [x for x in (already + picks) if x != "선택"]
+                    if len(players4) == 4 and len(set(players4)) == 4:
+                        locked_pos = {}
+                        for idx, (k, v, keep) in enumerate(zip(ks, vs, keep_mask)):
+                            if keep and v != "선택":
+                                locked_pos[idx] = v
+
+                        def _ntrp_of(name: str):
+                            v = roster_by_name.get(name, {}).get("ntrp", None)
+                            try:
+                                return None if v in (None, "", "모름") else float(v)
+                            except Exception:
+                                return None
+
+                        def _mixed_team(a: str, b: str) -> int:
+                            ga, gb = _gender_of(a), _gender_of(b)
+                            return 1 if (ga != gb and ga in ("남", "여") and gb in ("남", "여")) else 0
+
+                        best_perm = None
+                        best_score = None
+
+                        # ✅ 점수: mixed 팀 2개(=2) 최우선, 그 다음 NTRP 밸런스(차이 최소)
+                        import itertools
+                        for perm in itertools.permutations(players4, 4):
+                            ok = True
+                            for pos, locked in locked_pos.items():
+                                if perm[pos] != locked:
+                                    ok = False
+                                    break
+                            if not ok:
+                                continue
+
+                            t1 = perm[0:2]
+                            t2 = perm[2:4]
+                            mix_cnt = _mixed_team(t1[0], t1[1]) + _mixed_team(t2[0], t2[1])
+
+                            n_pen = 0.0
+                            if ntrp_on:
+                                vals = [_ntrp_of(x) for x in perm]
+                                if any(v is None for v in vals):
+                                    n_pen = 999.0
+                                else:
+                                    s1 = _ntrp_of(t1[0]) + _ntrp_of(t1[1])
+                                    s2 = _ntrp_of(t2[0]) + _ntrp_of(t2[1])
+                                    n_pen = abs(s1 - s2)
+
+                            score = (mix_cnt, -n_pen, rng.random())
+                            if best_score is None or score > best_score:
+                                best_score = score
+                                best_perm = perm
+
+                        if best_perm is not None:
+                            for idx, k in enumerate(ks):
+                                if idx in locked_pos:
+                                    continue
+                                plan[k] = best_perm[idx]
+                                used.add(best_perm[idx])
+                                auto_keys.add(k)
+                            mixed_applied = True
+
                 elif gender_mode == "동성":
+
                     already_gender = _gender_of(already[0]) if already else None
                     cand = men if already_gender == "남" else women if already_gender == "여" else (men if len(men) >= need else women)
                     if len(cand) >= need:
@@ -4814,6 +4863,9 @@ def render_tab_today_session(tab):
                     rest = men + women
                     if len(rest) >= need:
                         picks = rng.sample(rest, need)
+
+                if mixed_applied:
+                    continue
 
                 for k, p in zip(empty_keys, picks):
                     plan[k] = p
