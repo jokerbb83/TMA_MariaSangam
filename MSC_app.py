@@ -411,6 +411,31 @@ components.html(
       markRow(findBtn(btnTexts[2]));
     } catch (e) {}
 
+    // ✅ 모바일: 4-1 수동배정 셀렉트박스(4명+VS) 한줄 고정
+    try {
+      const markers = doc.querySelectorAll('.msc-manual-row-marker');
+      markers.forEach((m) => {
+        const md = m.closest('[data-testid="stMarkdown"]') || m.parentElement;
+        if (!md) return;
+        let hb = md.nextElementSibling;
+        let tries = 0;
+        while (hb && tries < 5 && hb.getAttribute('data-testid') !== 'stHorizontalBlock') {
+          hb = hb.nextElementSibling;
+          tries++;
+        }
+        if (hb && hb.getAttribute('data-testid') === 'stHorizontalBlock') {
+          hb.classList.add('msc-manual-inline-hb');
+        }
+      });
+
+      // VS 컬럼만 폭을 좁히기 위해 컬럼에 클래스 부여
+      doc.querySelectorAll('.msc-vs').forEach((vs) => {
+        const col = vs.closest('div[data-testid="column"]') || vs.parentElement;
+        if (col) col.classList.add('msc-vs-col');
+      });
+    } catch (e) {}
+
+
   }
 
   patch();
@@ -587,6 +612,45 @@ st.markdown("""
 }
 
 
+
+
+/* ✅ 4-1 수동배정: selectbox row 마커는 화면에 안 보이게 */
+.msc-manual-row-marker{ display:none; }
+
+/* ✅ 모바일: 4-1 수동배정 선수 선택(셀렉트박스 4칸 + VS) 한줄 고정 */
+@media (max-width: 900px){
+  div[data-testid="stHorizontalBlock"].msc-manual-inline-hb{
+    flex-wrap: nowrap !important;
+    gap: 10px !important;
+    align-items: center !important;
+  }
+  /* 모바일에서 컬럼이 100%로 스택되는 걸 무력화 → 한 줄에 4칸+VS가 들어가게 */
+  div[data-testid="stHorizontalBlock"].msc-manual-inline-hb > div{
+    flex: 1 1 0 !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+  /* VS 컬럼만 폭 축소 */
+  div[data-testid="stHorizontalBlock"].msc-manual-inline-hb > div.msc-vs-col{
+    flex: 0 0 2.2rem !important;
+    width: 2.2rem !important;
+  }
+  div[data-testid="stHorizontalBlock"].msc-manual-inline-hb .msc-vs{
+    font-size: 0.95rem !important;
+    line-height: 1.0 !important;
+  }
+  /* 셀렉트박스 컴팩트 */
+  div[data-testid="stHorizontalBlock"].msc-manual-inline-hb [data-baseweb="select"] > div{
+    min-height: 44px !important;
+    padding-left: 0.6rem !important;
+    padding-right: 1.8rem !important;
+  }
+  div[data-testid="stHorizontalBlock"].msc-manual-inline-hb [data-baseweb="select"]{
+    font-size: 0.95rem !important;
+  }
+}
+
 /* ✅ 모바일: 4-1 수동배정 버튼 2개(전체/체크)도 한줄 고정 */
 @media (max-width: 900px){
   /* Streamlit이 모바일에서 컬럼을 100% 폭으로 스택 처리함 → nowrap만 걸면 100%+100%가 옆으로 튐
@@ -617,6 +681,38 @@ st.markdown("""
     line-height: 1.15 !important;
     white-space: normal !important;   /* 글자 길면 2줄 허용(가로 넘침 방지) */
     word-break: keep-all !important;
+
+
+  /* ✅ 모바일: 4-1 수동배정 셀렉트박스(4명+VS) 한줄 고정 */
+  div[data-testid="stHorizontalBlock"].msc-manual-inline-hb{
+    flex-wrap: nowrap !important;
+    gap: 10px !important;
+    align-items: center !important;
+  }
+  div[data-testid="stHorizontalBlock"].msc-manual-inline-hb > div{
+    flex: 1 1 0 !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+  /* VS 컬럼은 더 좁게 */
+  div[data-testid="stHorizontalBlock"].msc-manual-inline-hb > div.msc-vs-col{
+    flex: 0 0 2.4rem !important;
+    width: 2.4rem !important;
+  }
+  /* 셀렉트박스 컴팩트 */
+  div[data-testid="stHorizontalBlock"].msc-manual-inline-hb [data-baseweb="select"] > div{
+    min-height: 42px !important;
+    height: 42px !important;
+  }
+  div[data-testid="stHorizontalBlock"].msc-manual-inline-hb [data-baseweb="select"]{
+    font-size: 0.95rem !important;
+  }
+  div[data-testid="stHorizontalBlock"].msc-manual-inline-hb .msc-vs{
+    font-size: 1.05rem !important;
+    font-weight: 900 !important;
+    text-align: center !important;
+  }
   }
 }
 </style>
@@ -4481,13 +4577,15 @@ def render_tab_today_session(tab):
                 k1 = _manual_key(r, c, 1, gtype)
                 k2 = _manual_key(r, c, 2, gtype)
 
+
+                st.markdown("<div class='msc-manual-row-marker'></div>", unsafe_allow_html=True)
                 col1, colVS, col2 = st.columns([3.2, 0.9, 3.2], vertical_alignment="center")
 
                 with col1:
                     _render_one("p1", k1)
 
                 with colVS:
-                    st.markdown("<div style='text-align:center; font-weight:900;'>VS</div>", unsafe_allow_html=True)
+                    st.markdown("<div class='msc-vs' style='text-align:center; font-weight:900;'>VS</div>", unsafe_allow_html=True)
 
                 with col2:
                     _render_one("p2", k2)
@@ -4498,6 +4596,8 @@ def render_tab_today_session(tab):
                 k3 = _manual_key(r, c, 3, gtype)
                 k4 = _manual_key(r, c, 4, gtype)
 
+
+                st.markdown("<div class='msc-manual-row-marker'></div>", unsafe_allow_html=True)
                 col1, col2, colVS, col3, col4 = st.columns(
                     [2.6, 2.6, 0.9, 2.6, 2.6],
                     vertical_alignment="center"
@@ -4510,7 +4610,7 @@ def render_tab_today_session(tab):
                     _render_one("t1b", k2)
 
                 with colVS:
-                    st.markdown("<div style='text-align:center; font-weight:900;'>VS</div>", unsafe_allow_html=True)
+                    st.markdown("<div class='msc-vs' style='text-align:center; font-weight:900;'>VS</div>", unsafe_allow_html=True)
 
                 with col3:
                     _render_one("t2a", k3)
@@ -6436,7 +6536,7 @@ def render_tab_today_session(tab):
                         with c1:
                             a = st.selectbox("p1", opts_all, index=opts_all.index(st.session_state[k_a]) if st.session_state[k_a] in opts_all else 0, key=k_a, label_visibility="collapsed")
                         with c2:
-                            st.markdown("<div style='text-align:center; font-weight:900;'>VS</div>", unsafe_allow_html=True)
+                            st.markdown("<div class='msc-vs' style='text-align:center; font-weight:900;'>VS</div>", unsafe_allow_html=True)
                         with c3:
                             b = st.selectbox("p2", opts_all, index=opts_all.index(st.session_state[k_b]) if st.session_state[k_b] in opts_all else 0, key=k_b, label_visibility="collapsed")
 
@@ -6463,7 +6563,7 @@ def render_tab_today_session(tab):
                         with col2:
                             p2 = st.selectbox("t1b", opts_all, index=opts_all.index(st.session_state[keys[1]]) if st.session_state[keys[1]] in opts_all else 0, key=keys[1], label_visibility="collapsed")
                         with colVS:
-                            st.markdown("<div style='text-align:center; font-weight:900;'>VS</div>", unsafe_allow_html=True)
+                            st.markdown("<div class='msc-vs' style='text-align:center; font-weight:900;'>VS</div>", unsafe_allow_html=True)
                         with col3:
                             p3 = st.selectbox("t2a", opts_all, index=opts_all.index(st.session_state[keys[2]]) if st.session_state[keys[2]] in opts_all else 0, key=keys[2], label_visibility="collapsed")
                         with col4:
