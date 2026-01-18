@@ -389,28 +389,6 @@ components.html(
       });
     } catch (e) {}
 
-    // ✅ 모바일: 4-1 수동배정 상단 버튼(전체/체크) 2개를 한 줄로 고정
-    try {
-      const btnTexts = [
-        '빈칸 자동 채우기(전체 라운드)',
-        '전체 초기화(수동 입력)',
-        '체크된 게임만 빈칸 채우기',
-        '체크된 게임만 초기화'
-      ];
-
-      const buttons = Array.from(doc.querySelectorAll('button'));
-      const findBtn = (t) => buttons.find(b => ((b.innerText||'').trim() === t));
-      const markRow = (btn) => {
-        if(!btn) return;
-        const hb = btn.closest('div[data-testid="stHorizontalBlock"]');
-        if (hb) hb.classList.add('msc-no-wrap-hb');
-      };
-
-      // 첫 버튼이 속한 row에만 클래스 추가하면 2개 버튼이 같이 고정됨
-      markRow(findBtn(btnTexts[0]));
-      markRow(findBtn(btnTexts[2]));
-    } catch (e) {}
-
   }
 
   patch();
@@ -586,39 +564,6 @@ st.markdown("""
   min-width: 0 !important;
 }
 
-
-/* ✅ 모바일: 4-1 수동배정 버튼 2개(전체/체크)도 한줄 고정 */
-@media (max-width: 900px){
-  /* Streamlit이 모바일에서 컬럼을 100% 폭으로 스택 처리함 → nowrap만 걸면 100%+100%가 옆으로 튐
-     그래서 이 줄(클래스 부여된 stHorizontalBlock)만 컬럼 폭을 강제로 50%로 축소 */
-  div[data-testid="stHorizontalBlock"].msc-no-wrap-hb{
-    flex-wrap: nowrap !important;
-    gap: 12px !important;
-    align-items: stretch !important;
-  }
-  /* 컬럼 wrapper(테스트 id가 버전마다 다를 수 있어 넓게 잡음) */
-  div[data-testid="stHorizontalBlock"].msc-no-wrap-hb > div{
-    flex: 1 1 0 !important;
-    width: 0 !important;          /* ✅ 핵심: 모바일에서 100%로 고정되는 폭을 무력화 */
-    min-width: 0 !important;
-    max-width: none !important;
-  }
-  /* 내부 컨테이너는 100%로 */
-  div[data-testid="stHorizontalBlock"].msc-no-wrap-hb > div > div{
-    width: 100% !important;
-  }
-  /* 버튼 자체도 모바일에서 살짝 컴팩트하게 (한눈에 들어오게) */
-  div[data-testid="stHorizontalBlock"].msc-no-wrap-hb button{
-    width: 100% !important;
-    min-height: 54px !important;
-    height: auto !important;
-    padding: 0.55rem 0.65rem !important;
-    font-size: 0.95rem !important;
-    line-height: 1.15 !important;
-    white-space: normal !important;   /* 글자 길면 2줄 허용(가로 넘침 방지) */
-    word-break: keep-all !important;
-  }
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -2224,6 +2169,10 @@ def _best_assignment_4p(players4, locked_pos, gender_mode, ntrp_on):
     best = None
     best_score = -10**18
 
+    # ✅ 혼합복식은 가능하면(2남2여가 확보되면) 무조건 남+여 / 남+여로만 배치
+    gs = [(_gender(p) or "") for p in players4]
+    can_strict_mixed = (gs.count("남") == 2 and gs.count("여") == 2)
+
     for perm in itertools.permutations(players4, 4):
         ok = True
         for idx, v in locked_pos.items():
@@ -2232,6 +2181,14 @@ def _best_assignment_4p(players4, locked_pos, gender_mode, ntrp_on):
                 break
         if not ok:
             continue
+
+        if gender_mode == "혼합" and can_strict_mixed:
+            t1 = perm[:2]
+            t2 = perm[2:]
+            def _is_mixed(t):
+                return set([_gender(t[0]), _gender(t[1])]) == {"남", "여"}
+            if (not _is_mixed(t1)) or (not _is_mixed(t2)):
+                continue
 
         score = _score_assignment_for_mode(list(perm), gender_mode, ntrp_on)
         if score > best_score:
@@ -4498,25 +4455,48 @@ def render_tab_today_session(tab):
                 k3 = _manual_key(r, c, 3, gtype)
                 k4 = _manual_key(r, c, 4, gtype)
 
-                col1, col2, colVS, col3, col4 = st.columns(
-                    [2.6, 2.6, 0.9, 2.6, 2.6],
-                    vertical_alignment="center"
-                )
+                mobile_mode = bool(st.session_state.get("mobile_mode", False))
 
-                with col1:
-                    _render_one("t1a", k1)
+                # ✅ 모바일: 팀1 2명 한 줄 + VS + 팀2 2명 한 줄(2줄)
+                if mobile_mode:
+                    row1_c1, row1_c2 = st.columns([1, 1], vertical_alignment="center")
+                    with row1_c1:
+                        _render_one("t1a", k1)
+                    with row1_c2:
+                        _render_one("t1b", k2)
 
-                with col2:
-                    _render_one("t1b", k2)
+                    st.markdown(
+                        "<div style='text-align:center; font-weight:900; margin:6px 0 2px 0;'>VS</div>",
+                        unsafe_allow_html=True,
+                    )
 
-                with colVS:
-                    st.markdown("<div style='text-align:center; font-weight:900;'>VS</div>", unsafe_allow_html=True)
+                    row2_c1, row2_c2 = st.columns([1, 1], vertical_alignment="center")
+                    with row2_c1:
+                        _render_one("t2a", k3)
+                    with row2_c2:
+                        _render_one("t2b", k4)
 
-                with col3:
-                    _render_one("t2a", k3)
+                # ✅ PC: 한 줄에 4명 + VS
+                else:
+                    col1, col2, colVS, col3, col4 = st.columns(
+                        [2.6, 2.6, 0.9, 2.6, 2.6],
+                        vertical_alignment="center"
+                    )
 
-                with col4:
-                    _render_one("t2b", k4)
+                    with col1:
+                        _render_one("t1a", k1)
+
+                    with col2:
+                        _render_one("t1b", k2)
+
+                    with colVS:
+                        st.markdown("<div style='text-align:center; font-weight:900;'>VS</div>", unsafe_allow_html=True)
+
+                    with col3:
+                        _render_one("t2a", k3)
+
+                    with col4:
+                        _render_one("t2b", k4)
 
         def _manual_gender_to_mode(manual_gender_mode: str) -> str:
             # UI 값("성별랜덤","동성","혼합") → 내부 값("랜덤","동성","혼합")
@@ -4715,10 +4695,26 @@ def render_tab_today_session(tab):
                     if len(rest) >= need:
                         picks = rng.sample(rest, need)
 
-                for k, p in zip(empty_keys, picks):
-                    plan[k] = p
-                    used.add(p)
-                    auto_keys.add(k)
+                # ✅ 1) 먼저 빈칸을 임시로 채운 뒤(포지션 기준),
+                # ✅ 2) 혼합이면 '남+여 vs 남+여'가 되도록 포지션 재배치(수동 고정은 유지)
+                tmp = list(eff_vs)
+                empty_idx = [i for i, v in enumerate(tmp) if v == "선택"]
+
+                for i, p in zip(empty_idx, picks):
+                    tmp[i] = p
+
+                if gender_mode == "혼합" and all(v != "선택" for v in tmp):
+                    locked_pos = {i: tmp[i] for i, keep in enumerate(keep_mask) if keep and tmp[i] != "선택"}
+                    best = _best_assignment_4p(tmp, locked_pos, gender_mode="혼합", ntrp_on=ntrp_on)
+                    if best:
+                        tmp = best
+
+                # 최종 반영(원래 빈칸이었던 자리만 자동 채움 처리)
+                for i, k in enumerate(ks):
+                    if eff_vs[i] == "선택" and tmp[i] != "선택":
+                        plan[k] = tmp[i]
+                        used.add(tmp[i])
+                        auto_keys.add(k)
 
             return plan, auto_keys
 
@@ -5914,6 +5910,7 @@ def render_tab_today_session(tab):
             st.markdown("---")
             st.subheader("4-1. 직접 배정(수동) 입력")
             st.caption("※ 한 라운드 안에서는 같은 선수가 중복 선택되지 않도록 제한됩니다.")
+
             # ✅ pending → session_state (위젯 렌더 전에만!)
             _apply_manual_pending()
 
@@ -5927,8 +5924,7 @@ def render_tab_today_session(tab):
             )
             manual_fill_ntrp = st.checkbox("NTRP 고려", key="manual_fill_ntrp")
 
-            # ✅ 모바일에서도 버튼 2개를 한 줄(좌/우 반반)로 유지
-            b1, b2 = st.columns(2)
+            b1, b2, b3 = st.columns(3)
             with b1:
                 st.markdown('<div class="main-primary-btn">', unsafe_allow_html=True)
                 fill_all_clicked = st.button(
@@ -5947,7 +5943,8 @@ def render_tab_today_session(tab):
                 )
                 st.markdown("</div>", unsafe_allow_html=True)
 
-            st.caption("체크된 게임만 자동 채우기/초기화는 아래에서 가능")
+            with b3:
+                st.caption("체크된 게임만 자동 채우기/초기화는 아래에서 가능")
 
             # ✅ plan을 '바로' state에 반영 (pending/rerun 제거)
             # ✅ plan을 '바로' state에 반영 (pending/rerun 제거)
@@ -6043,8 +6040,8 @@ def render_tab_today_session(tab):
             # ✅ 체크된 게임 집계
             selected_games = [(rr, cc) for (gno, rr, cc) in games if st.session_state.get(f"chk_game_{gno}", False)]
 
-            # ✅ 체크된 게임용 버튼 (✅ 모바일에서도 한 줄로)
-            t1, t2 = st.columns(2)
+            # ✅ 체크된 게임용 버튼
+            t1, t2, t3 = st.columns([3.2, 3.2, 1.6], vertical_alignment="center")
             with t1:
                 st.markdown('<div class="main-primary-btn">', unsafe_allow_html=True)
                 fill_checked_clicked = st.button(
@@ -6064,10 +6061,11 @@ def render_tab_today_session(tab):
                 )
                 st.markdown("</div>", unsafe_allow_html=True)
 
-            st.markdown(
-                f"<div style='text-align:right; font-weight:800; color:#374151; margin-top:0.3rem;'>선택됨: {len(selected_games)}게임</div>",
-                unsafe_allow_html=True,
-            )
+            with t3:
+                st.markdown(
+                    f"<div style='text-align:right; font-weight:800; color:#374151;'>선택됨: {len(selected_games)}게임</div>",
+                    unsafe_allow_html=True,
+                )
 
             # ✅ 체크된 게임 초기화
             if clear_checked_clicked and selected_games:
@@ -6124,7 +6122,7 @@ def render_tab_today_session(tab):
             for (gno, rr, cc) in games:
 
                 # 헤더(체크 + 게임명)
-                h1, h2 = st.columns([0.3, 9.1], vertical_alignment="center")
+                h1, h2 = st.columns([0.9, 9.1], vertical_alignment="center")
                 with h1:
                     st.checkbox(
                         "",
@@ -7777,7 +7775,7 @@ with tab3:
                             else:
                                 # ✅ PC에서는 좌우를 확 넓혀서 이름이 절대 안 꺾이게
                                 col_t1_side, col_s1, col_vs, col_s2, col_t2_side = st.columns(
-                                    [3, 1.1, 0.7, 1.1, 3]
+                                    [3.8, 0.9, 0.4, 0.9, 3.8]
                                 )
 
                             # 왼쪽 팀 (유대한 / 배성균 / 모름)
@@ -8529,7 +8527,7 @@ with tab3:
                                                 if k in st.session_state:
                                                     del st.session_state[k]
 
-                                            st.session_state["_flash_day_edit_msg"] = "✅ 게임 순서 교환 완료! (점수도 교환됐는지 확인 바람)"
+                                            st.session_state["_flash_day_edit_msg"] = "✅ 게임 순서 교환 완료! (점수도 함께 교환됨)"
                                             safe_rerun()
 
 # 2. 오늘의 요약 리포트 (자동 생성)
@@ -9201,7 +9199,7 @@ with tab5:
                     # 1. 월간 선수 순위표
                     # =========================================================
                     st.subheader("1. 월간 선수 순위표")
-                    st.caption("승=3점, 무=1점, 패=0점")
+
                     rank_view_mode = st.radio(
                         "순위표 보기 방식",
                         ["전체", "조별 보기 (A/B조)"],
