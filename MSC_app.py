@@ -2114,6 +2114,7 @@ def get_daily_fortune(sel_player):
         "상대가 잘 치면 '운 좋네'라고 중얼거려라. 상대의 실력을 운으로 치부하는 것, 그게 바로 멘탈 방어다."
     ]
 
+
     chosung = list("ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅎ")
     rackets = ["윌슨", "요넥스", "헤드", "바볼랏", "던롭"]
     ages = ["20대", "30대", "40대", "50대"]
@@ -6734,7 +6735,7 @@ with tab3:
         if sel_date == "전체":
             view_mode_scores = "전체"
         else:
-            # ✅ 스코어보드(옵저버)에서는 표시 방식 자체를 숨김 + 전체로 고정
+            # ✅ 옵저버/스코어보드에서는 "표시 방식" 라디오 자체를 숨기고 항상 "전체"로 고정
             if IS_OBSERVER:
                 view_mode_scores = "전체"
             else:
@@ -6755,13 +6756,12 @@ with tab3:
                         index=default_view_index,
                     )
 
-                    # ✅ 선택값 저장(다음에 다시 들어와도 유지) - 관리자만
+                    # ✅ 선택값 저장(다음에 다시 들어와도 유지)
                     if view_mode_scores != saved_view:
                         day_data["score_view_mode"] = view_mode_scores
                         sessions[sel_date] = day_data
                         st.session_state.sessions = sessions
                         save_sessions(sessions)
-
 
 
         # 나중에 다시 그리기 위한 요약 컨테이너
