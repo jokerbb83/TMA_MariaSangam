@@ -366,12 +366,8 @@ components.html(
   }
 
   function patch(){
-    if(!isMobile()) return;
-
-    doc.querySelectorAll(SEL_SELECT).forEach(hardenSelect);
-    doc.querySelectorAll(SEL_DATE).forEach(softenDate);
-
-    // ✅ 모바일: 점수 입력(라디오+점수+VS+점수+라디오) 한줄 고정
+    // ✅ (모바일/PC 공통) 점수 입력(라디오+점수+VS+점수+라디오) 줄을 식별해서
+    //    해당 stHorizontalBlock에 클래스 부여 → CSS를 그 줄에만 정확히 적용
     try {
       const markers = doc.querySelectorAll('.score-row');
       markers.forEach((m) => {
@@ -384,10 +380,18 @@ components.html(
           tries++;
         }
         if (hb && hb.getAttribute('data-testid') === 'stHorizontalBlock') {
-          hb.classList.add('msa-score-row-hb');
+          hb.classList.add('msc-score-row-hb');
+          // ✅ 모바일일 때만 기존 한줄 고정용 클래스도 추가
+          if (isMobile()) hb.classList.add('msa-score-row-hb');
         }
       });
     } catch (e) {}
+
+    // ✅ 모바일 전용: 키보드 차단/달력 입력 예외 처리
+    if(isMobile()){
+      doc.querySelectorAll(SEL_SELECT).forEach(hardenSelect);
+      doc.querySelectorAll(SEL_DATE).forEach(softenDate);
+    }
 
   }
 
@@ -7333,34 +7337,30 @@ with tab3:
         if not mobile_mode:
             st.markdown("""
             <style>
-            /* ✅ PC 라디오: 너무 빡센 'nowrap' 제거하고 간격 줄이기 */
-            .stRadio [role="radiogroup"]{
+            /* ✅ PC: '전체 경기 스코어' 점수 입력 줄에서만 라디오를 3줄(세로)로 고정 */
+            .msc-score-row-hb [data-testid="stRadio"] [role="radiogroup"]{
                 display: flex !important;
-                flex-direction: row !important;
-                flex-wrap: wrap !important;          /* ✅ 핵심: 겹침 방지 */
-                gap: 0.25rem 0.6rem !important;      /* ✅ 옵션 간 간격 축소 */
-                align-items: center !important;
+                flex-direction: column !important;  /* ✅ 한 옵션 = 한 줄 */
+                flex-wrap: nowrap !important;
+                gap: 0.22rem !important;
+                align-items: flex-start !important;
             }
 
-            /* ✅ 라디오 동그라미와 텍스트 사이 간격 줄이기 */
-            .stRadio label{
-                gap: 0.25rem !important;
-                padding-right: 0.1rem !important;
+            .msc-score-row-hb [data-testid="stRadio"] label{
+                width: 100% !important;
+                gap: 0.28rem !important;
+                padding-right: 0 !important;
             }
 
-            .stRadio label span{
+            .msc-score-row-hb [data-testid="stRadio"] label span{
                 white-space: nowrap !important;
-                font-size: 0.92rem !important;      /* ✅ 살짝만 줄여서 안정화 */
+                font-size: 0.92rem !important;
             }
 
             /* 너가 이미 쓰는 이름 배지 class */
             .name-badge{
                 white-space: nowrap !important;
                 display: inline-block !important;
-            }
-
-            .score-row *{
-                white-space: nowrap !important;
             }
             </style>
             """, unsafe_allow_html=True)
@@ -7588,6 +7588,36 @@ with tab3:
                             return f"🔵 {name}"
                         return name
 
+                    # ✅ 게임 헤더 오른쪽에 붙일 '대진 요약(성별 컬러칩 포함)' HTML
+                    def _chip_html(name: str) -> str:
+                        info = roster_by_name.get(name, {}) or {}
+                        g = info.get("gender") or info.get("성별")
+                        if g == "남":
+                            cls = "msc-chip-m"
+                        elif g == "여":
+                            cls = "msc-chip-f"
+                        else:
+                            cls = "msc-chip-u"
+                        return f"<span class='msc-chip {cls}'>{_html.escape(str(name))}</span>"
+
+                    def _team_summary_html(team) -> str:
+                        parts = []
+                        for i, n in enumerate(list(team)):
+                            if i > 0:
+                                parts.append("<span style='margin:0 2px; font-weight:800; color:#6b7280;'>,</span>")
+                            parts.append(_chip_html(n))
+                        return "".join(parts)
+
+                    def _match_summary_html(t1_team, t2_team) -> str:
+                        return (
+                            "<span class='msc-chip-wrap' "
+                            "style='flex-wrap:nowrap; white-space:nowrap; overflow-x:auto; max-width:100%; -webkit-overflow-scrolling:touch;'>"
+                            f"{_team_summary_html(t1_team)}"
+                            "<span class='msc-vs'>vs</span>"
+                            f"{_team_summary_html(t2_team)}"
+                            "</span>"
+                        )
+
                     # ✅ 여기서 한 번 정의해줘야 해
                     score_options_local = SCORE_OPTIONS
 
@@ -7609,12 +7639,23 @@ with tab3:
                         _sep_css = "border-top:1px solid #e5e7eb;" if _show_sep else "border-top:none;"
                         _top_css = "margin-top:0.6rem; padding-top:0.4rem;" if _show_sep else "margin-top:0.25rem; padding-top:0.15rem;"
 
+                        # ✅ PC: (복식, 코트1) 오른쪽에 대진 요약(성별 컬러칩 포함) 표시
+                        _summary_html = ""
+                        if not mobile_mode:
+                            try:
+                                _summary_html = _match_summary_html(t1, t2)
+                            except Exception:
+                                _summary_html = ""
+
                         st.markdown(
                             f"""
-                            <div style="
+                            <div class="msc-gamehead" style="
                                 {_top_css}
                                 {_sep_css}
                                 margin-bottom:0.18rem;
+                                flex-wrap:nowrap;
+                                overflow-x:auto;
+                                -webkit-overflow-scrolling:touch;
                             ">
                                 <span style="font-weight:600; font-size:0.96rem;">
                                     게임 {local_no}
@@ -7622,6 +7663,7 @@ with tab3:
                                 <span style="font-size:0.82rem; color:#6b7280; margin-left:6px;">
                                     ({gtype}{', 코트 ' + str(court) if court else ''})
                                 </span>
+                                {_summary_html}
                             </div>
                             """,
                             unsafe_allow_html=True,
