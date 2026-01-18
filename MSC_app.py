@@ -6125,7 +6125,7 @@ def render_tab_today_session(tab):
             for (gno, rr, cc) in games:
 
                 # 헤더(체크 + 게임명)
-                h1, h2 = st.columns([0.9, 9.1], vertical_alignment="center")
+                h1, h2 = st.columns([0.5, 9.1], vertical_alignment="center")
                 with h1:
                     st.checkbox(
                         "",
