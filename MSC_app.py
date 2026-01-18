@@ -389,6 +389,28 @@ components.html(
       });
     } catch (e) {}
 
+    // ✅ 모바일: 4-1 수동배정 상단 버튼(전체/체크) 2개를 한 줄로 고정
+    try {
+      const btnTexts = [
+        '빈칸 자동 채우기(전체 라운드)',
+        '전체 초기화(수동 입력)',
+        '체크된 게임만 빈칸 채우기',
+        '체크된 게임만 초기화'
+      ];
+
+      const buttons = Array.from(doc.querySelectorAll('button'));
+      const findBtn = (t) => buttons.find(b => ((b.innerText||'').trim() === t));
+      const markRow = (btn) => {
+        if(!btn) return;
+        const hb = btn.closest('div[data-testid="stHorizontalBlock"]');
+        if (hb) hb.classList.add('msc-no-wrap-hb');
+      };
+
+      // 첫 버튼이 속한 row에만 클래스 추가하면 2개 버튼이 같이 고정됨
+      markRow(findBtn(btnTexts[0]));
+      markRow(findBtn(btnTexts[2]));
+    } catch (e) {}
+
   }
 
   patch();
@@ -564,6 +586,18 @@ st.markdown("""
   min-width: 0 !important;
 }
 
+
+/* ✅ 모바일: 4-1 수동배정 버튼 2개(전체/체크)도 한줄 고정 */
+@media (max-width: 900px){
+  div[data-testid="stHorizontalBlock"].msc-no-wrap-hb{
+    flex-wrap: nowrap !important;
+    gap: 12px !important;
+  }
+  div[data-testid="stHorizontalBlock"].msc-no-wrap-hb > div[data-testid="column"]{
+    min-width: 0 !important;
+    flex: 1 1 0 !important;
+  }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -4624,97 +4658,30 @@ def render_tab_today_session(tab):
                 picks = []
 
                 if gender_mode == "혼합":
-                    # ✅ 혼합복식(남+여 vs 남+여) 강제:
-                    #    팀1(슬롯1,2)과 팀2(슬롯3,4) 각각이 (남1+여1)이 되도록 채운다.
-                    key_to_idx = {k: i for i, k in enumerate(ks)}
+                    already_m = sum(1 for x in already if _gender_of(x) == "남")
+                    already_w = sum(1 for x in already if _gender_of(x) == "여")
 
-                    def _take_from(lst, target_ntrp=None):
-                        if not lst:
-                            return None
-                        if ntrp_on:
-                            pick = _pick_by_ntrp_closest(lst, target_ntrp, rng=rng)
-                        else:
-                            pick = rng.choice(lst)
-                        try:
-                            lst.remove(pick)
-                        except Exception:
-                            pass
-                        return pick
+                    while len(picks) < need:
+                        want_m = (already_m + sum(1 for x in picks if _gender_of(x) == "남")) < 2
+                        want_w = (already_w + sum(1 for x in picks if _gender_of(x) == "여")) < 2
 
-                    def _take_any(target_ntrp=None):
-                        rest = men + women
-                        if not rest:
-                            return None
-                        if ntrp_on:
-                            pick = _pick_by_ntrp_closest(rest, target_ntrp, rng=rng)
+                        if want_m and men:
+                            pick = rng.choice(men) if not ntrp_on else _pick_by_ntrp_closest(men, None, rng=rng)
+                            men.remove(pick)
+                        elif want_w and women:
+                            pick = rng.choice(women) if not ntrp_on else _pick_by_ntrp_closest(women, None, rng=rng)
+                            women.remove(pick)
                         else:
-                            pick = rng.choice(rest)
-                        if pick in men:
-                            try:
+                            rest = men + women
+                            if not rest:
+                                break
+                            pick = rng.choice(rest) if not ntrp_on else _pick_by_ntrp_closest(rest, None, rng=rng)
+                            if pick in men:
                                 men.remove(pick)
-                            except Exception:
-                                pass
-                        elif pick in women:
-                            try:
-                                women.remove(pick)
-                            except Exception:
-                                pass
-                        return pick
-
-                    # 현재(고정된) 값
-                    fixed = {i: v for i, v in enumerate(eff_vs) if v != "선택"}
-                    pick_for_idx = {}
-
-                    # 팀별(0,1)=팀1 / (2,3)=팀2
-                    for a, b in ((0, 1), (2, 3)):
-                        va = fixed.get(a)
-                        vb = fixed.get(b)
-
-                        # 둘 다 고정이면 건드리지 않음(사용자가 강제로 만든 케이스)
-                        if va and vb:
-                            continue
-
-                        # 한 명만 고정이면 반대 성별 파트너를 채움
-                        if (va and not vb) or (vb and not va):
-                            fixed_name = va if va else vb
-                            empty_i = b if va else a
-                            g = _gender_of(fixed_name)
-                            want = "여" if g == "남" else "남"
-                            cand = women if want == "여" else men
-                            pick = _take_from(cand, _ntrp_of(fixed_name))
-                            if pick is None:
-                                pick = _take_any(_ntrp_of(fixed_name))
-                            if pick:
-                                pick_for_idx[empty_i] = pick
-                            continue
-
-                        # 둘 다 비었으면 남/여 한 명씩 선택
-                        if (not va) and (not vb):
-                            if men and women:
-                                m = _take_from(men, None)
-                                # 여성은 남성의 ntrp에 맞춰 고르면 밸런스가 조금 나아짐
-                                target = _ntrp_of(m) if (ntrp_on and m) else None
-                                f = _take_from(women, target)
-                                if m:
-                                    pick_for_idx[a] = m
-                                if f:
-                                    pick_for_idx[b] = f
                             else:
-                                p1 = _take_any(None)
-                                p2 = _take_any(_ntrp_of(p1) if (ntrp_on and p1) else None)
-                                if p1:
-                                    pick_for_idx[a] = p1
-                                if p2:
-                                    pick_for_idx[b] = p2
+                                women.remove(pick)
 
-                    # 혹시 남/여 밸런스가 부족해서 아직 못 채운 칸이 있으면, 남은 인원으로라도 채움(최후 fallback)
-                    for k in empty_keys:
-                        ii = key_to_idx[k]
-                        if ii not in pick_for_idx:
-                            pick_for_idx[ii] = _take_any(None)
-
-                    picks = [pick_for_idx.get(key_to_idx[k]) for k in empty_keys]
-
+                        picks.append(pick)
 
                 elif gender_mode == "동성":
                     already_gender = _gender_of(already[0]) if already else None
@@ -4728,8 +4695,6 @@ def render_tab_today_session(tab):
                         picks = rng.sample(rest, need)
 
                 for k, p in zip(empty_keys, picks):
-                    if not p:
-                        continue
                     plan[k] = p
                     used.add(p)
                     auto_keys.add(k)
@@ -5942,7 +5907,8 @@ def render_tab_today_session(tab):
             )
             manual_fill_ntrp = st.checkbox("NTRP 고려", key="manual_fill_ntrp")
 
-            b1, b2, b3 = st.columns(3)
+            # ✅ 모바일에서도 버튼 2개를 한 줄(좌/우 반반)로 유지
+            b1, b2 = st.columns(2)
             with b1:
                 st.markdown('<div class="main-primary-btn">', unsafe_allow_html=True)
                 fill_all_clicked = st.button(
@@ -5961,8 +5927,7 @@ def render_tab_today_session(tab):
                 )
                 st.markdown("</div>", unsafe_allow_html=True)
 
-            with b3:
-                st.caption("체크된 게임만 자동 채우기/초기화는 아래에서 가능")
+            st.caption("체크된 게임만 자동 채우기/초기화는 아래에서 가능")
 
             # ✅ plan을 '바로' state에 반영 (pending/rerun 제거)
             # ✅ plan을 '바로' state에 반영 (pending/rerun 제거)
@@ -6058,8 +6023,8 @@ def render_tab_today_session(tab):
             # ✅ 체크된 게임 집계
             selected_games = [(rr, cc) for (gno, rr, cc) in games if st.session_state.get(f"chk_game_{gno}", False)]
 
-            # ✅ 체크된 게임용 버튼
-            t1, t2, t3 = st.columns([3.2, 3.2, 1.6], vertical_alignment="center")
+            # ✅ 체크된 게임용 버튼 (✅ 모바일에서도 한 줄로)
+            t1, t2 = st.columns(2)
             with t1:
                 st.markdown('<div class="main-primary-btn">', unsafe_allow_html=True)
                 fill_checked_clicked = st.button(
@@ -6079,11 +6044,10 @@ def render_tab_today_session(tab):
                 )
                 st.markdown("</div>", unsafe_allow_html=True)
 
-            with t3:
-                st.markdown(
-                    f"<div style='text-align:right; font-weight:800; color:#374151;'>선택됨: {len(selected_games)}게임</div>",
-                    unsafe_allow_html=True,
-                )
+            st.markdown(
+                f"<div style='text-align:right; font-weight:800; color:#374151; margin-top:0.3rem;'>선택됨: {len(selected_games)}게임</div>",
+                unsafe_allow_html=True,
+            )
 
             # ✅ 체크된 게임 초기화
             if clear_checked_clicked and selected_games:
