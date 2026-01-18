@@ -5913,8 +5913,7 @@ def render_tab_today_session(tab):
         if is_manual_mode:
             st.markdown("---")
             st.subheader("4-1. 직접 배정(수동) 입력")
-순위표 보기 방식
-
+            st.caption("※ 한 라운드 안에서는 같은 선수가 중복 선택되지 않도록 제한됩니다.")
             # ✅ pending → session_state (위젯 렌더 전에만!)
             _apply_manual_pending()
 
