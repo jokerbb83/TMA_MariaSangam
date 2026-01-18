@@ -589,13 +589,34 @@ st.markdown("""
 
 /* ✅ 모바일: 4-1 수동배정 버튼 2개(전체/체크)도 한줄 고정 */
 @media (max-width: 900px){
+  /* Streamlit이 모바일에서 컬럼을 100% 폭으로 스택 처리함 → nowrap만 걸면 100%+100%가 옆으로 튐
+     그래서 이 줄(클래스 부여된 stHorizontalBlock)만 컬럼 폭을 강제로 50%로 축소 */
   div[data-testid="stHorizontalBlock"].msc-no-wrap-hb{
     flex-wrap: nowrap !important;
     gap: 12px !important;
+    align-items: stretch !important;
   }
-  div[data-testid="stHorizontalBlock"].msc-no-wrap-hb > div[data-testid="column"]{
-    min-width: 0 !important;
+  /* 컬럼 wrapper(테스트 id가 버전마다 다를 수 있어 넓게 잡음) */
+  div[data-testid="stHorizontalBlock"].msc-no-wrap-hb > div{
     flex: 1 1 0 !important;
+    width: 0 !important;          /* ✅ 핵심: 모바일에서 100%로 고정되는 폭을 무력화 */
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+  /* 내부 컨테이너는 100%로 */
+  div[data-testid="stHorizontalBlock"].msc-no-wrap-hb > div > div{
+    width: 100% !important;
+  }
+  /* 버튼 자체도 모바일에서 살짝 컴팩트하게 (한눈에 들어오게) */
+  div[data-testid="stHorizontalBlock"].msc-no-wrap-hb button{
+    width: 100% !important;
+    min-height: 54px !important;
+    height: auto !important;
+    padding: 0.55rem 0.65rem !important;
+    font-size: 0.95rem !important;
+    line-height: 1.15 !important;
+    white-space: normal !important;   /* 글자 길면 2줄 허용(가로 넘침 방지) */
+    word-break: keep-all !important;
   }
 }
 </style>
