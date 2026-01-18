@@ -6734,33 +6734,29 @@ with tab3:
         if sel_date == "전체":
             view_mode_scores = "전체"
         else:
-            # ✅ 옵저버/스코어보드에서는 "표시 방식" 라디오 자체를 숨기고 항상 "전체"로 고정
-            if IS_OBSERVER:
+            # lock_view=True면 전체로 고정하고 라디오를 안 보여줌
+            if lock_view:
                 view_mode_scores = "전체"
             else:
-                # lock_view=True면 전체로 고정하고 라디오를 안 보여줌
-                if lock_view:
-                    view_mode_scores = "전체"
-                else:
-                    # ✅ 저장된 값이 없으면 기본은 "전체"
-                    saved_view = day_data.get("score_view_mode", "전체")
+                # ✅ 저장된 값이 없으면 기본은 "전체"
+                saved_view = day_data.get("score_view_mode", "전체")
 
-                    default_view_index = 1 if saved_view == "전체" else 0  # ["조별", "전체"]에서 전체=1
+                default_view_index = 1 if saved_view == "전체" else 0  # ["조별", "전체"]에서 전체=1
 
-                    view_mode_scores = st.radio(
-                        "표시 방식",
-                        ["조별 보기 (A/B조)", "전체"],
-                        horizontal=True,
-                        key=f"tab3_view_mode_scores_{sel_date}",   # ✅ 날짜별 key로 분리
-                        index=default_view_index,
-                    )
+                view_mode_scores = st.radio(
+                    "표시 방식",
+                    ["조별 보기 (A/B조)", "전체"],
+                    horizontal=True,
+                    key=f"tab3_view_mode_scores_{sel_date}",   # ✅ 날짜별 key로 분리
+                    index=default_view_index,
+                )
 
-                    # ✅ 선택값 저장(다음에 다시 들어와도 유지)
-                    if view_mode_scores != saved_view:
-                        day_data["score_view_mode"] = view_mode_scores
-                        sessions[sel_date] = day_data
-                        st.session_state.sessions = sessions
-                        save_sessions(sessions)
+                # ✅ 선택값 저장(다음에 다시 들어와도 유지)
+                if (not IS_OBSERVER) and (view_mode_scores != saved_view):
+                    day_data["score_view_mode"] = view_mode_scores
+                    sessions[sel_date] = day_data
+                    st.session_state.sessions = sessions
+                    save_sessions(sessions)
 
 
         # 나중에 다시 그리기 위한 요약 컨테이너
