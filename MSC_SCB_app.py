@@ -36,4 +36,5 @@ if target is None:
     raise FileNotFoundError("연결할 관리자 앱 파일을 찾지 못했어. (MSC_app - 복사본 (12).py / MSC_app_admin_linked.py / MSC_app.py / MSC_app - 복사본 (9).py 중 하나가 필요)")
 
 # ✅ 관리자 앱을 그대로 실행 (수정사항 자동 반영)
+
 runpy.run_path(str(target), run_name="__main__")
