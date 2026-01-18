@@ -4679,30 +4679,82 @@ def render_tab_today_session(tab):
                 picks = []
 
                 if gender_mode == "혼합":
-                    already_m = sum(1 for x in already if _gender_of(x) == "남")
-                    already_w = sum(1 for x in already if _gender_of(x) == "여")
+                    # ✅ 혼합(복식): 팀이 무조건 남+여 / 남+여가 되도록 채움 (남,남 vs 여,여 방지)
+                    if gtype == "복식" and len(ks) == 4:
+                        pos_map = {kk: i for i, kk in enumerate(ks)}
+                        eff_tmp = list(eff_vs)
 
-                    while len(picks) < need:
-                        want_m = (already_m + sum(1 for x in picks if _gender_of(x) == "남")) < 2
-                        want_w = (already_w + sum(1 for x in picks if _gender_of(x) == "여")) < 2
+                        def _pick_from(cands):
+                            if not cands:
+                                return None
+                            return (
+                                rng.choice(cands)
+                                if not ntrp_on
+                                else _pick_by_ntrp_closest(cands, None, rng=rng)
+                            )
 
-                        if want_m and men:
-                            pick = rng.choice(men) if not ntrp_on else _pick_by_ntrp_closest(men, None, rng=rng)
-                            men.remove(pick)
-                        elif want_w and women:
-                            pick = rng.choice(women) if not ntrp_on else _pick_by_ntrp_closest(women, None, rng=rng)
-                            women.remove(pick)
-                        else:
-                            rest = men + women
-                            if not rest:
+                        for kk in empty_keys:
+                            i = pos_map.get(kk, None)
+                            if i is None:
+                                continue
+
+                            # 팀 내 짝 인덱스: 0<->1, 2<->3
+                            mate_i = (i - 1) if (i % 2 == 1) else (i + 1)
+                            mate = eff_tmp[mate_i] if 0 <= mate_i < len(eff_tmp) else "선택"
+
+                            if mate != "선택":
+                                # 팀의 한 명이 이미 정해졌으면 반대 성별을 강제
+                                need_g = "여" if _gender_of(mate) == "남" else "남"
+                                cand = men if need_g == "남" else women
+                                pick = _pick_from(cand) or _pick_from(men + women)
+                            else:
+                                # 팀이 둘 다 비어있으면:
+                                #  - t1a/t2a(0/2)는 남 우선
+                                #  - t1b/t2b(1/3)는 여 우선
+                                prefer_g = "남" if i in (0, 2) else "여"
+                                primary = men if prefer_g == "남" else women
+                                secondary = women if prefer_g == "남" else men
+                                pick = _pick_from(primary) or _pick_from(secondary) or _pick_from(men + women)
+
+                            if pick is None:
                                 break
-                            pick = rng.choice(rest) if not ntrp_on else _pick_by_ntrp_closest(rest, None, rng=rng)
+
+                            # 후보군에서 제거(중복 방지)
                             if pick in men:
                                 men.remove(pick)
-                            else:
+                            if pick in women:
                                 women.remove(pick)
 
-                        picks.append(pick)
+                            picks.append(pick)
+                            eff_tmp[i] = pick
+
+                    else:
+                        # 단식/기타: 가능한 한 1남 1여가 되게 채움(가능할 때)
+                        already_m = sum(1 for x in already if _gender_of(x) == "남")
+                        already_w = sum(1 for x in already if _gender_of(x) == "여")
+
+                        while len(picks) < need:
+                            want_m = (already_m + sum(1 for x in picks if _gender_of(x) == "남")) < 1
+                            want_w = (already_w + sum(1 for x in picks if _gender_of(x) == "여")) < 1
+
+                            if want_m and men:
+                                pick = rng.choice(men) if not ntrp_on else _pick_by_ntrp_closest(men, None, rng=rng)
+                                men.remove(pick)
+                            elif want_w and women:
+                                pick = rng.choice(women) if not ntrp_on else _pick_by_ntrp_closest(women, None, rng=rng)
+                                women.remove(pick)
+                            else:
+                                rest = men + women
+                                if not rest:
+                                    break
+                                pick = rng.choice(rest) if not ntrp_on else _pick_by_ntrp_closest(rest, None, rng=rng)
+                                if pick in men:
+                                    men.remove(pick)
+                                else:
+                                    women.remove(pick)
+
+                            picks.append(pick)
+
 
                 elif gender_mode == "동성":
                     already_gender = _gender_of(already[0]) if already else None
