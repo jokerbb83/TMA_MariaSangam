@@ -7778,7 +7778,7 @@ with tab3:
                             else:
                                 # ✅ PC에서는 좌우를 확 넓혀서 이름이 절대 안 꺾이게
                                 col_t1_side, col_s1, col_vs, col_s2, col_t2_side = st.columns(
-                                    [2.7, 1.1, 0.7, 1.1, 2.7]
+                                    [3, 1.1, 0.7, 1.1, 3]
                                 )
 
                             # 왼쪽 팀 (유대한 / 배성균 / 모름)
