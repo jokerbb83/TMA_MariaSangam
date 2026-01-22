@@ -989,32 +989,43 @@ def build_daily_report(sel_date, day_data):
 
     # 1) 기본 출석 / 경기 수
     lines.append(f"출석 인원 {len(attendees)}명, 점수 입력된 경기 {total_games}게임")
+    # 2) 오늘의 MVP (최다승 → 동률이면 득실차)
+    best_wins = -1
+    candidates = []
+    member_set = None
+    try:
+        global roster
+        if isinstance(roster, list):
+            member_set = {p.get('name') for p in roster}
+    except Exception:
+        member_set = None
 
-    # 2) 승점왕 / 공동 승점왕
-    best_points = -1
-    best_players = []
     for name, r in recs.items():
-        if r["G"] == 0:
+        if r.get('G', 0) == 0:
             continue
-        if r["points"] > best_points:
-            best_points = r["points"]
-            best_players = [name]
-        elif r["points"] == best_points:
-            best_players.append(name)
+        if name == '게스트':
+            continue
+        if member_set is not None and name not in member_set:
+            continue
+        w = r.get('W', 0)
+        if w > best_wins:
+            best_wins = w
+            candidates = [name]
+        elif w == best_wins:
+            candidates.append(name)
 
-    if best_players and best_points >= 0:
-        if len(best_players) == 1:
-            who = best_players[0]
-            r = recs[who]
-            lines.append(
-                f"오늘의 MVP: {who} (승점 {best_points}점, {r['W']}승 {r['D']}무 {r['L']}패)"
-            )
-        else:
-            names_str = ", ".join(best_players)
-            example = recs[best_players[0]]
-            lines.append(
-                f"오늘의 공동 MVP: {names_str} (모두 승점 {best_points}점, 예: {example['W']}승 {example['D']}무 {example['L']}패)"
-            )
+    if candidates and best_wins >= 0:
+        def _diff(n):
+            rr = recs[n]
+            return int(rr.get('score_for', 0) - rr.get('score_against', 0))
+
+        best_diff = max(_diff(n) for n in candidates)
+        winners = [n for n in candidates if _diff(n) == best_diff]
+        who = sorted(winners, key=lambda x: x)[0]
+        r = recs[who]
+        lines.append(
+            f"오늘의 MVP: {who} ({r['W']}승 {r['D']}무 {r['L']}패, 득실차 {_diff(who)}점)"
+        )
 
     # 3) 무패 선수
     undefeated = [name for name, r in recs.items() if r["G"] > 0 and r["L"] == 0]
@@ -4518,36 +4529,9 @@ def render_tab_today_session(tab):
                 with col4:
                     _render_one("t2b", k4)
 
-        def _manual_gender_to_mode(manual_gender_mode: str, same_submode: str | None = None, for_checked: bool = False) -> str:
-            """수동 입력 UI의 성별 옵션을 내부 gender_mode 값으로 변환.
-            - manual_gender_mode: '성별랜덤' / '동성' / '혼합'
-            - same_submode (동성일 때만): '동성복식' / '남성복식' / '여성복식'
-            - for_checked: 체크된 게임만 채우기 버튼에서 호출인지 여부
-
-            내부 gender_mode:
-              - '랜덤'
-              - '혼합'
-              - '동성랜덤'  (동성복식: 게임별로 남/여 동성복식을 랜덤 선택)
-              - '동성남'    (남성복식)
-              - '동성여'    (여성복식)
-            """
-            if manual_gender_mode == "혼합":
-                return "혼합"
-            if manual_gender_mode != "동성":
-                return "랜덤"
-
-            # ✅ 동성 세부 옵션 결정
-            ss = same_submode or st.session_state.get("manual_same_gender_submode", "동성복식")
-
-            # ✅ 남성/여성복식은 '체크된 게임만'에서만 강제 적용
-            if (not for_checked) and ss in ("남성복식", "여성복식"):
-                ss = "동성복식"
-
-            if ss == "남성복식":
-                return "동성남"
-            if ss == "여성복식":
-                return "동성여"
-            return "동성랜덤"
+        def _manual_gender_to_mode(manual_gender_mode: str) -> str:
+            # UI 값("성별랜덤","동성","혼합") → 내부 값("랜덤","동성","혼합")
+            return "혼합" if manual_gender_mode == "혼합" else "동성" if manual_gender_mode == "동성" else "랜덤"
 
         def _fill_round_plan(
             r: int,
@@ -4783,43 +4767,11 @@ def render_tab_today_session(tab):
                             picks.append(pick)
 
 
-                elif gender_mode in ("동성", "동성랜덤", "동성남", "동성여"):
-                    # ✅ 동성(복식) 채우기:
-                    #   - 동성복식(동성랜덤): 게임(코트)별로 남/여 동성복식을 랜덤 선택
-                    #   - 남성복식(동성남) / 여성복식(동성여): 해당 성별 우선
-                    #   - 인원 부족하면 다른 성별이 들어가도 OK
-                    desired = None
-                    if gender_mode == "동성남":
-                        desired = "남"
-                    elif gender_mode == "동성여":
-                        desired = "여"
-
-                    # 이미 일부가 채워져 있으면(수동 고정 등) 그 성별을 우선 따름(가능할 때)
-                    if already:
-                        ag = {g for g in (_gender_of(x) for x in already) if g in ("남", "여")}
-                        if len(ag) == 1:
-                            desired = list(ag)[0]
-
-                    # 동성복식(동성/동성랜덤)인 경우: 남/여 가능하면 랜덤 선택
-                    if desired is None:
-                        can_m = len(men) >= need
-                        can_w = len(women) >= need
-                        if can_m and can_w:
-                            desired = rng.choice(["남", "여"])
-                        elif can_m:
-                            desired = "남"
-                        elif can_w:
-                            desired = "여"
-
-                    cand = men if desired == "남" else women if desired == "여" else []
-
+                elif gender_mode == "동성":
+                    already_gender = _gender_of(already[0]) if already else None
+                    cand = men if already_gender == "남" else women if already_gender == "여" else (men if len(men) >= need else women)
                     if len(cand) >= need:
                         picks = rng.sample(cand, need)
-                    else:
-                        # 부족하면 다른 성별 포함해서 채움
-                        rest = men + women
-                        if len(rest) >= need:
-                            picks = rng.sample(rest, need)
 
                 else:
                     rest = men + women
@@ -6036,20 +5988,6 @@ def render_tab_today_session(tab):
                 key="manual_gender_mode",
                 label_visibility="collapsed",
             )
-
-            # ✅ 동성 옵션 세부 설정 (동성 선택 시에만 노출)
-            manual_same_gender_submode = None
-            if manual_gender_mode == "동성":
-                st.markdown("<div style='height:0.15rem;'></div>", unsafe_allow_html=True)
-                manual_same_gender_submode = st.radio(
-                    "동성 세부 옵션",
-                    ["동성복식", "남성복식", "여성복식"],
-                    horizontal=True,
-                    key="manual_same_gender_submode",
-                    label_visibility="collapsed",
-                )
-                # 디폴트는 '동성복식' (라디오 첫 값)
-
             manual_fill_ntrp = st.checkbox("NTRP 고려", key="manual_fill_ntrp")
 
             # ✅ 모바일에서도 버튼 2개를 한 줄(좌/우 반반)로 유지
@@ -6116,7 +6054,7 @@ def render_tab_today_session(tab):
             #   - ✅ 이전에 자동으로 들어간 값은 이번 클릭에서 다시 랜덤으로 갈아끼움
             # -------------------------
             if fill_all_clicked and players_selected:
-                gm = _manual_gender_to_mode(manual_gender_mode, st.session_state.get('manual_same_gender_submode', '동성복식'), for_checked=False)
+                gm = _manual_gender_to_mode(manual_gender_mode)
 
                 # ✅ 버튼 누를 때마다 결과가 달라지게
                 seed_base = int(random.random() * 1_000_000_000)
@@ -6208,7 +6146,7 @@ def render_tab_today_session(tab):
 
             # ✅ 체크된 게임 빈칸 채우기
             if fill_checked_clicked and players_selected and selected_games:
-                gm = _manual_gender_to_mode(manual_gender_mode, st.session_state.get('manual_same_gender_submode', '동성복식'), for_checked=True)
+                gm = _manual_gender_to_mode(manual_gender_mode)
 
                 # ✅ 버튼 누를 때마다 결과가 달라지게
                 seed_base = int(random.random() * 1_000_000_000)
@@ -7724,29 +7662,26 @@ with tab3:
                             unsafe_allow_html=True,
                         )
                     # 배지 모양 이름 줄 (성별에 따라 배경색 다르게)
-                    def render_name_pills(players, with_commas: bool = False):
-                        """성별에 따라 배경색이 다른 이름 컬러칩(배지) HTML을 만든다.
-                        with_commas=True 이면 '이름,이름'처럼 콤마 구분자를 같이 넣는다."""
+                    def render_name_pills(players):
                         html_parts = []
-                        players = list(players) if players is not None else []
-                        for i, p in enumerate(players):
+                        for p in players:
                             info = roster_by_name.get(p, {}) or {}
                             g = info.get("gender")
+
                             if g == "남":
                                 bg = "#dbeafe"   # 연한 파랑
                             elif g == "여":
                                 bg = "#fee2e2"   # 연한 빨강
                             else:
                                 bg = "#f3f4f6"   # 회색
+
                             html_parts.append(
                                 f"<span class='name-badge' style='"
                                 f"background:{bg};"
-                                f"padding:2px 6px;"
-                                f"border-radius:7px;"
-                                f"margin-right:3px;"
+                                f"padding:3px 8px;"
+                                f"border-radius:8px;"
+                                f"margin-right:4px;"
                                 f"font-weight:700;"
-                                f"font-size:0.78rem;"
-                                f"line-height:1.2;"
                                 f"color:#111111;"
                                 f"display:inline-block;"
                                 f"white-space:nowrap;"
@@ -7754,8 +7689,6 @@ with tab3:
                                 f"{p}"
                                 f"</span>"
                             )
-                            if with_commas and i < len(players) - 1:
-                                html_parts.append("<span style='margin-right:4px; color:#6b7280; font-weight:800;'>,</span>")
                         return "".join(html_parts)
                     # 라디오 옵션에 붙일 성별 색상 라벨 (남 🔵 / 여 🔴)
                     def gender_badge_label(name: str) -> str:
@@ -7792,18 +7725,23 @@ with tab3:
                         _sep_css = "border-top:1px solid #e5e7eb;" if _show_sep else "border-top:none;"
                         _top_css = "margin-top:0.6rem; padding-top:0.4rem;" if _show_sep else "margin-top:0.25rem; padding-top:0.15rem;"
 
-                        _t1_pills = render_name_pills(t1, with_commas=True)
-                        _t2_pills = render_name_pills(t2, with_commas=True)
-                        _game_header_html = "\n".join([
-                            f"<div style=\"{_top_css}{_sep_css}margin-bottom:0.18rem;\">",
-                            "<div style=\"display:flex; align-items:center; flex-wrap:wrap; gap:6px; justify-content:flex-start;\">",
-                            f"<span style=\"font-weight:600; font-size:0.96rem;\">게임 {local_no}</span>",
-                            f"<span style=\"font-size:0.82rem; color:#6b7280;\">({gtype}{', 코트 ' + str(court) if court else ''})</span>",
-                            f"<span style=\"display:flex; align-items:center; flex-wrap:wrap; gap:4px; margin-left:6px;\">{_t1_pills}<span style=\"font-weight:800; color:#6b7280; margin:0 4px;\">VS</span>{_t2_pills}</span>",
-                            "</div>",
-                            "</div>",
-                        ])
-                        st.markdown(_game_header_html, unsafe_allow_html=True)
+                        st.markdown(
+                            f"""
+                            <div style="
+                                {_top_css}
+                                {_sep_css}
+                                margin-bottom:0.18rem;
+                            ">
+                                <span style="font-weight:600; font-size:0.96rem;">
+                                    게임 {local_no}
+                                </span>
+                                <span style="font-size:0.82rem; color:#6b7280; margin-left:6px;">
+                                    ({gtype}{', 코트 ' + str(court) if court else ''})
+                                </span>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
 
 
                         # 저장돼 있던 값
@@ -9027,9 +8965,6 @@ with tab4:
                 if vs_opponent:
                     rows = []
                     for name, r in vs_opponent.items():
-                        # ✅ 등록된 선수에서 삭제된 이름은 통계에서 숨김
-                        if (name not in roster_by_name):
-                            continue
                         if r["G"] == 0:
                             continue
                         win_rate = r["W"] / r["G"] * 100
@@ -9063,9 +8998,6 @@ with tab4:
                 if with_partner:
                     rows = []
                     for name, r in with_partner.items():
-                        # ✅ 등록된 선수에서 삭제된 이름은 통계에서 숨김
-                        if (name not in roster_by_name):
-                            continue
                         if r["G"] == 0:
                             continue
                         win_rate = r["W"] / r["G"] * 100
@@ -9588,6 +9520,22 @@ with tab5:
                 best_mbti = best_by_category("MBTI", lambda m: m.get("mbti", "모름"), exclude_values={"모름"})
 
                 # 🎯 노자비왕(득-실) — 점수 입력된 경기 기준으로 평균
+                # 🏆 MVP (승점 최고)
+                mvp_line = "데이터 부족"
+                _mvp_candidates = [
+                    (name, r)
+                    for name, r in recs.items()
+                    if r.get("G", 0) > 0 and (name != "게스트") and (not is_guest_name(name, roster))
+                ]
+                if _mvp_candidates:
+                    best_pts = max(r.get("points", 0) for _, r in _mvp_candidates)
+                    winners = [name for name, r in _mvp_candidates if r.get("points", 0) == best_pts]
+                    if len(winners) == 1:
+                        mvp_line = f"{winners[0]} (승점 {best_pts}점)"
+                    else:
+                        mvp_line = f"{', '.join(winners)} (공동 MVP · 승점 {best_pts}점)"
+
+
                 diff_stats = []
                 for name, r in recs.items():
                     if is_guest_name(name, roster):
@@ -9767,6 +9715,7 @@ with tab5:
                             🏅 선수별 BEST
                         </div>
                         <ul style="padding-left:1.1rem;margin:0;font-size:0.9rem;">
+                            <li>🏆 MVP&nbsp;:&nbsp;{mvp_line}</li>
                             <li>🎯 격차왕&nbsp;:&nbsp;{diff_line}</li>
                             <li>🤝 우정왕&nbsp;:&nbsp;{partner_line}</li>
                             <li>👑 출석왕&nbsp;:&nbsp;{attendance_line}</li>
