@@ -21,7 +21,6 @@ import streamlit.components.v1 as components
 
 import io
 from PIL import Image
-import matplotlib.pyplot as plt
 
 
 # =========================================================
@@ -9389,87 +9388,135 @@ with tab5:
 
 
                     # =========================================================
-                    # ✅ [월간 순위표] 표 JPG 저장 (서버사이드)
-                    #   - st.dataframe 캡처는 가상렌더/스크롤 때문에 누락/빈 화면 발생 가능
-                    #   - DataFrame을 matplotlib로 직접 렌더링해서 JPG로 다운로드
+                    # ✅ [월간 순위표] 표 JPG 저장 (브라우저 캡처 - 전체 행 포함)
+                    #   - st.dataframe은 가상 렌더(스크롤)로 DOM에 전체 행이 없어서 캡처가 비거나 누락될 수 있음
+                    #   - 그래서 '전체 행이 들어간 정적 HTML 표'를 숨겨서 렌더한 뒤, html2canvas로 그 DOM을 캡처해 JPG로 저장
+                    #   - (matplotlib 불필요)
                     # =========================================================
-                    def _month_rank_df_to_jpeg_bytes(_df: pd.DataFrame, _title: str) -> bytes:
+                    def _month_rank_static_table_html(_df: pd.DataFrame, _title: str) -> str:
                         df_img = _df.copy()
-                        # index(순위)도 컬럼으로 포함
-                        df_img.insert(0, "순위", df_img.index.astype(str))
-
-                        nrows, ncols = df_img.shape
-                        fig_w = max(8.5, ncols * 1.05)
-                        fig_h = max(2.5, (nrows + 2) * 0.34)
-
-                        fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=160)
-                        ax.axis("off")
-
-                        ax.text(
-                            0.0, 1.02, str(_title),
-                            transform=ax.transAxes,
-                            fontsize=18,
-                            fontweight="bold",
-                            va="bottom",
-                            ha="left",
-                            color="#111827",
-                        )
-
-                        tbl = ax.table(
-                            cellText=df_img.values,
-                            colLabels=df_img.columns,
-                            cellLoc="center",
-                            colLoc="center",
-                            loc="upper left",
-                        )
-
-                        tbl.auto_set_font_size(False)
-                        tbl.set_fontsize(10)
-                        tbl.scale(1.0, 1.35)
-
-                        header_bg = "#f9fafb"
-                        grid = "#e5e7eb"
-                        male_bg = "#dbeafe"
-                        female_bg = "#fee2e2"
-                        neutral_bg = "#f3f4f6"
-                        white_bg = "#ffffff"
+                        df_img.insert(0, "순위", df_img.index.astype(int))
 
                         cols = list(df_img.columns)
-                        col_idx = {c: i for i, c in enumerate(cols)}
-                        name_col = col_idx.get("이름", None)
 
-                        for (r, c), cell in tbl.get_celld().items():
-                            cell.set_edgecolor(grid)
-                            cell.set_linewidth(0.6)
-
-                            if r == 0:
-                                cell.set_facecolor(header_bg)
-                                cell.get_text().set_fontweight("bold")
-                                cell.get_text().set_color("#374151")
-                                continue
-
-                            cell.set_facecolor(white_bg)
-
-                            # 이름 컬러칩(성별) 느낌으로 셀 배경 적용
-                            if (name_col is not None) and (c == name_col):
-                                nm = str(df_img.iloc[r - 1, c])
-                                info = roster_by_name.get(nm, {}) or {}
+                        def td_style_for(col_name: str, value: str) -> str:
+                            # 이름 컬러칩(셀 배경)
+                            if col_name == "이름":
+                                info = roster_by_name.get(value, {}) or {}
                                 g = info.get("gender")
                                 if g == "남":
-                                    cell.set_facecolor(male_bg)
-                                elif g == "여":
-                                    cell.set_facecolor(female_bg)
-                                else:
-                                    cell.set_facecolor(neutral_bg)
-                                cell.get_text().set_fontweight("bold")
-                                cell.get_text().set_color("#111827")
+                                    return "background:#dbeafe; font-weight:800; color:#111827;"
+                                if g == "여":
+                                    return "background:#fee2e2; font-weight:800; color:#111827;"
+                                return "background:#f3f4f6; font-weight:800; color:#111827;"
+                            return ""
 
-                        fig.tight_layout(pad=0.6)
-                        buf = io.BytesIO()
-                        fig.savefig(buf, format="jpeg", dpi=160, bbox_inches="tight")
-                        plt.close(fig)
-                        buf.seek(0)
-                        return buf.read()
+                        # 테이블 HTML (전체 행 포함)
+                        parts = []
+                        parts.append("<div style='font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; background:#ffffff;'>")
+                        parts.append(f"<div style='font-size:22px; font-weight:900; margin:0 0 14px 0; color:#111827;'>{_html.escape(str(_title))}</div>")
+                        parts.append("<table style='border-collapse:collapse; width:100%; font-size:14px;'>")
+                        # header
+                        parts.append("<thead><tr>")
+                        for c in cols:
+                            parts.append(
+                                f"<th style='border:1px solid #e5e7eb; padding:8px 10px; background:#f9fafb; color:#374151; font-weight:800; text-align:center;'>{_html.escape(str(c))}</th>"
+                            )
+                        parts.append("</tr></thead>")
+                        # body
+                        parts.append("<tbody>")
+                        for _, row in df_img.iterrows():
+                            parts.append("<tr>")
+                            for c in cols:
+                                v = row[c]
+                                v_str = "" if pd.isna(v) else str(v)
+                                style = td_style_for(c, v_str)
+                                parts.append(
+                                    f"<td style='border:1px solid #e5e7eb; padding:8px 10px; text-align:center; {style}'>{_html.escape(v_str)}</td>"
+                                )
+                            parts.append("</tr>")
+                        parts.append("</tbody></table></div>")
+                        return "".join(parts)
+
+                    def _render_month_rank_jpg_button(_cap_id: str, _file_name: str, _btn_label: str = "순위표 JPG 저장하기"):
+                        # 버튼 1개: 클릭 시 숨겨진 표 DOM을 캡처해서 JPG로 다운로드
+                        components.html(
+                            f"""
+                            <div style="display:flex; gap:10px; margin-top:12px; align-items:center;">
+                              <button id="{_cap_id}__save"
+                                style="flex:1; padding:12px 12px; border-radius:12px; border:1px solid rgba(0,0,0,0.15);
+                                       background:white; cursor:pointer; font-weight:800;">
+                                {_btn_label}
+                              </button>
+                              <span id="{_cap_id}__msg" style="font-size:12px; opacity:0.7;"></span>
+                            </div>
+
+                            <script>
+                            (function() {{
+                              const capId = {json.dumps(_cap_id)};
+                              const fileName = {json.dumps(_file_name)};
+                              const msgEl  = document.getElementById(capId + "__msg");
+                              const btnSave = document.getElementById(capId + "__save");
+
+                              function setMsg(m) {{
+                                if (msgEl) msgEl.textContent = m;
+                              }}
+
+                              function ensureHtml2Canvas() {{
+                                return new Promise((resolve, reject) => {{
+                                  const p = window.parent;
+                                  if (p && p.html2canvas) {{
+                                    resolve(p.html2canvas);
+                                    return;
+                                  }}
+                                  const ps = p.document.createElement("script");
+                                  ps.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+                                  ps.onload = () => resolve(p.html2canvas);
+                                  ps.onerror = reject;
+                                  p.document.head.appendChild(ps);
+                                }});
+                              }}
+
+                              if (btnSave) {{
+                                btnSave.onclick = async function() {{
+                                  try {{
+                                    setMsg("이미지 생성중…");
+                                    const pdoc = window.parent.document;
+                                    const el = pdoc.getElementById(capId + "__content");
+                                    if (!el) {{
+                                      setMsg("캡처 대상을 찾지 못했어.");
+                                      return;
+                                    }}
+
+                                    const h2c = await ensureHtml2Canvas();
+                                    const canvas = await h2c(el, {{
+                                      backgroundColor: "#ffffff",
+                                      scale: 2,
+                                      useCORS: true
+                                    }});
+
+                                    const url = canvas.toDataURL("image/jpeg", 0.95);
+                                    const a = pdoc.createElement("a");
+                                    a.href = url;
+                                    a.download = fileName;
+                                    pdoc.body.appendChild(a);
+                                    a.click();
+                                    a.remove();
+
+                                    setMsg("JPG 저장 완료!");
+                                  }} catch (e) {{
+                                    console.log(e);
+                                    setMsg("저장 실패(콘솔 확인)");
+                                  }}
+                                }};
+                              }}
+                            }})();
+                            </script>
+                            """,
+                            height=72,
+                        )
+
+
                     # ---------------------------------------------------------
                     # 1-3) 순위표 출력
                     # ---------------------------------------------------------
@@ -9481,28 +9528,17 @@ with tab5:
                             sty_rank = colorize_df_names(rank_df, roster_by_name, ["이름"])
                             smart_table(sty_rank, use_container_width=True)
 
-                            # ✅ JPG 저장(전체)
-                            _mrank_key = f"month_rank_all_jpeg_{sel_month}"
-                            c_save, c_msg = st.columns([4, 1])
-                            with c_save:
-                                do_make = st.button("전체 순위표 JPG 저장하기", use_container_width=True, key=f"{_mrank_key}_make")
-                            with c_msg:
-                                _m = st.empty()
-                            if do_make:
-                                try:
-                                    jpg = _month_rank_df_to_jpeg_bytes(rank_df, f"{sel_month} 월간 선수 순위표 (전체)")
-                                    st.session_state[_mrank_key] = jpg
-                                    _m.success("완료")
-                                except Exception as e:
-                                    st.session_state.pop(_mrank_key, None)
-                                    _m.error("실패")
-                                    st.error(f"JPG 생성 실패: {e}")
-
-                            _jpg = st.session_state.get(_mrank_key, b"")
-                            if _jpg:
-                                _fname = f"월간순위표_{sel_month}_전체.jpg".replace("/", "_").replace(" ", "_")
-                                st.download_button("다운로드 (JPG)", data=_jpg, file_name=_fname, mime="image/jpeg", key=f"{_mrank_key}_dl")
-
+                            # ✅ 순위표 JPG 저장(전체) - 전체 행 포함 정적 HTML 캡처
+                            _safe_month = re.sub(r"[^0-9a-zA-Z_\-]+", "_", str(sel_month))
+                            _cap_id = f"month_rank_all_{_safe_month}"
+                            _title = f"{sel_month} 월간 선수 순위표 (전체)"
+                            _tbl_html = _month_rank_static_table_html(rank_df, _title)
+                            st.markdown(
+                                f'<div id="{_cap_id}__content" style="position:fixed; left:-100000px; top:0; width:1200px; padding:24px; background:#ffffff; box-sizing:border-box;">{_tbl_html}</div>',
+                                unsafe_allow_html=True,
+                            )
+                            _fname = f"월간순위표_{sel_month}_전체.jpg".replace("/", "_").replace(" ", "_")
+                            _render_month_rank_jpg_button(_cap_id, _fname, "전체 순위표 JPG 저장하기")
                     else:
                         # ✅ 조별보기: 집계는 동일(recs_all), 선수만 A/B로 나누기
                         names_A = sorted([n for n, g in player_month_group.items() if g == "A"])
@@ -9518,54 +9554,34 @@ with tab5:
                             sty_A = colorize_df_names(rank_df_A, roster_by_name, ["이름"])
                             smart_table(sty_A, use_container_width=True)
 
-                            # ✅ JPG 저장(A조)
-                            _mrankA_key = f"month_rank_A_jpeg_{sel_month}"
-                            c_saveA, c_msgA = st.columns([4, 1])
-                            with c_saveA:
-                                do_makeA = st.button("A조 순위표 JPG 저장하기", use_container_width=True, key=f"{_mrankA_key}_make")
-                            with c_msgA:
-                                _mA = st.empty()
-                            if do_makeA:
-                                try:
-                                    jpgA = _month_rank_df_to_jpeg_bytes(rank_df_A, f"{sel_month} 월간 선수 순위표 (A조)")
-                                    st.session_state[_mrankA_key] = jpgA
-                                    _mA.success("완료")
-                                except Exception as e:
-                                    st.session_state.pop(_mrankA_key, None)
-                                    _mA.error("실패")
-                                    st.error(f"JPG 생성 실패(A조): {e}")
-                            _jpgA = st.session_state.get(_mrankA_key, b"")
-                            if _jpgA:
-                                _fnameA = f"월간순위표_{sel_month}_A조.jpg".replace("/", "_").replace(" ", "_")
-                                st.download_button("다운로드 (JPG)", data=_jpgA, file_name=_fnameA, mime="image/jpeg", key=f"{_mrankA_key}_dl")
-
+                            # ✅ 순위표 JPG 저장(A조) - 전체 행 포함 정적 HTML 캡처
+                            _safe_month = re.sub(r"[^0-9a-zA-Z_\-]+", "_", str(sel_month))
+                            _cap_id = f"month_rank_A_{_safe_month}"
+                            _title = f"{sel_month} 월간 선수 순위표 (A조)"
+                            _tbl_html = _month_rank_static_table_html(rank_df_A, _title)
+                            st.markdown(
+                                f'<div id="{_cap_id}__content" style="position:fixed; left:-100000px; top:0; width:1200px; padding:24px; background:#ffffff; box-sizing:border-box;">{_tbl_html}</div>',
+                                unsafe_allow_html=True,
+                            )
+                            _fname = f"월간순위표_{sel_month}_A조.jpg".replace("/", "_").replace(" ", "_")
+                            _render_month_rank_jpg_button(_cap_id, _fname, "A조 순위표 JPG 저장하기")
                         if rank_df_B is not None:
                             has_any = True
                             st.markdown("### 🟦 B조 월간 선수 순위표")
                             sty_B = colorize_df_names(rank_df_B, roster_by_name, ["이름"])
                             smart_table(sty_B, use_container_width=True)
 
-                            # ✅ JPG 저장(B조)
-                            _mrankB_key = f"month_rank_B_jpeg_{sel_month}"
-                            c_saveB, c_msgB = st.columns([4, 1])
-                            with c_saveB:
-                                do_makeB = st.button("B조 순위표 JPG 저장하기", use_container_width=True, key=f"{_mrankB_key}_make")
-                            with c_msgB:
-                                _mB = st.empty()
-                            if do_makeB:
-                                try:
-                                    jpgB = _month_rank_df_to_jpeg_bytes(rank_df_B, f"{sel_month} 월간 선수 순위표 (B조)")
-                                    st.session_state[_mrankB_key] = jpgB
-                                    _mB.success("완료")
-                                except Exception as e:
-                                    st.session_state.pop(_mrankB_key, None)
-                                    _mB.error("실패")
-                                    st.error(f"JPG 생성 실패(B조): {e}")
-                            _jpgB = st.session_state.get(_mrankB_key, b"")
-                            if _jpgB:
-                                _fnameB = f"월간순위표_{sel_month}_B조.jpg".replace("/", "_").replace(" ", "_")
-                                st.download_button("다운로드 (JPG)", data=_jpgB, file_name=_fnameB, mime="image/jpeg", key=f"{_mrankB_key}_dl")
-
+                            # ✅ 순위표 JPG 저장(B조) - 전체 행 포함 정적 HTML 캡처
+                            _safe_month = re.sub(r"[^0-9a-zA-Z_\-]+", "_", str(sel_month))
+                            _cap_id = f"month_rank_B_{_safe_month}"
+                            _title = f"{sel_month} 월간 선수 순위표 (B조)"
+                            _tbl_html = _month_rank_static_table_html(rank_df_B, _title)
+                            st.markdown(
+                                f'<div id="{_cap_id}__content" style="position:fixed; left:-100000px; top:0; width:1200px; padding:24px; background:#ffffff; box-sizing:border-box;">{_tbl_html}</div>',
+                                unsafe_allow_html=True,
+                            )
+                            _fname = f"월간순위표_{sel_month}_B조.jpg".replace("/", "_").replace(" ", "_")
+                            _render_month_rank_jpg_button(_cap_id, _fname, "B조 순위표 JPG 저장하기")
                         if not has_any:
                             st.info("A조 / B조로 나눠서 표시할 데이터가 없습니다.")
 
