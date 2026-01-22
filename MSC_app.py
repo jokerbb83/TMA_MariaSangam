@@ -7668,10 +7668,12 @@ with tab3:
                             html_parts.append(
                                 f"<span class='name-badge' style='"
                                 f"background:{bg};"
-                                f"padding:3px 8px;"
-                                f"border-radius:8px;"
-                                f"margin-right:4px;"
+                                f"padding:2px 6px;"
+                                f"border-radius:7px;"
+                                f"margin-right:3px;"
                                 f"font-weight:700;"
+                                f"font-size:0.78rem;"
+                                f"line-height:1.2;"
                                 f"color:#111111;"
                                 f"display:inline-block;"
                                 f"white-space:nowrap;"
@@ -7721,15 +7723,10 @@ with tab3:
                         _t2_pills = render_name_pills(t2, with_commas=True)
                         _game_header_html = "\n".join([
                             f"<div style=\"{_top_css}{_sep_css}margin-bottom:0.18rem;\">",
-                            "<div style=\"display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px;\">",
-                            f"<div style=\"display:flex; align-items:center; flex-wrap:wrap;\">"
-                            f"<span style=\\\"font-weight:600; font-size:0.96rem;\\\">게임 {local_no}</span>"
-                            f"<span style=\\\"font-size:0.82rem; color:#6b7280; margin-left:6px;\\\">"
-                            f"({gtype}{', 코트 ' + str(court) if court else ''})</span></div>",
-                            f"<div style=\"display:flex; align-items:center; flex-wrap:wrap; justify-content:flex-end;\">"
-                            f"<span style=\\\"display:flex; align-items:center; flex-wrap:wrap;\\\">{_t1_pills}</span>"
-                            f"<span style=\\\"font-weight:800; color:#6b7280; margin:0 6px;\\\">VS</span>"
-                            f"<span style=\\\"display:flex; align-items:center; flex-wrap:wrap;\\\">{_t2_pills}</span></div>",
+                            "<div style=\"display:flex; align-items:center; flex-wrap:wrap; gap:6px; justify-content:flex-start;\">",
+                            f"<span style=\"font-weight:600; font-size:0.96rem;\">게임 {local_no}</span>",
+                            f"<span style=\"font-size:0.82rem; color:#6b7280;\">({gtype}{', 코트 ' + str(court) if court else ''})</span>",
+                            f"<span style=\"display:flex; align-items:center; flex-wrap:wrap; gap:4px; margin-left:6px;\">{_t1_pills}<span style=\"font-weight:800; color:#6b7280; margin:0 4px;\">VS</span>{_t2_pills}</span>",
                             "</div>",
                             "</div>",
                         ])
