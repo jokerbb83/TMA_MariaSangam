@@ -3799,7 +3799,7 @@
         }
       }
     },
-    "score_view_mode": "조별 보기 (A/B조)",
+    "score_view_mode": "전체",
     "score_view_lock": false,
     "groups_snapshot": {
       "정유민": "A조",
