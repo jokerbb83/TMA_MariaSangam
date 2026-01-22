@@ -9520,20 +9520,36 @@ with tab5:
                 best_mbti = best_by_category("MBTI", lambda m: m.get("mbti", "모름"), exclude_values={"모름"})
 
                 # 🎯 노자비왕(득-실) — 점수 입력된 경기 기준으로 평균
-                # 🏆 MVP (승점 최고)
+                # 🏆 MVP (월간) — 1) 승점 최다 → 2) 출석일(적은 사람) → 3) 총득실차(큰 사람) → 4) 이름
                 mvp_line = "데이터 부족"
                 _mvp_candidates = [
                     (name, r)
                     for name, r in recs.items()
-                    if r.get("G", 0) > 0 and (name != "게스트") and (not is_guest_name(name, roster))
+                    if r.get("G", 0) > 0 and (not is_guest_name(name, roster))
                 ]
                 if _mvp_candidates:
+                    # 1) 승점 최다
                     best_pts = max(r.get("points", 0) for _, r in _mvp_candidates)
-                    winners = [name for name, r in _mvp_candidates if r.get("points", 0) == best_pts]
-                    if len(winners) == 1:
-                        mvp_line = f"{winners[0]} (승점 {best_pts}점)"
-                    else:
-                        mvp_line = f"{', '.join(winners)} (공동 MVP · 승점 {best_pts}점)"
+                    tied = [(name, r) for name, r in _mvp_candidates if r.get("points", 0) == best_pts]
+
+                    # 2) 출석일이 적은 사람 (동점일 때만)
+                    if len(tied) > 1:
+                        min_days = min(len(r.get("days", set()) or set()) for _, r in tied)
+                        tied = [(name, r) for name, r in tied if len(r.get("days", set()) or set()) == min_days]
+
+                    # 3) 총득실차(득점-실점) 큰 사람
+                    if len(tied) > 1:
+                        def _diff(_r):
+                            return int(_r.get("score_for", 0) or 0) - int(_r.get("score_against", 0) or 0)
+                        best_diff = max(_diff(r) for _, r in tied)
+                        tied = [(name, r) for name, r in tied if _diff(r) == best_diff]
+
+                    # 4) 그래도 동점이면 이름순 1명
+                    tied.sort(key=lambda x: str(x[0]))
+                    winner_name, winner_rec = tied[0]
+                    _days = len(winner_rec.get("days", set()) or set())
+                    _diff_total = int(winner_rec.get("score_for", 0) or 0) - int(winner_rec.get("score_against", 0) or 0)
+                    mvp_line = f"{winner_name} (승점 {best_pts}점, 참석 {_days}일, 득실차 {_diff_total})"
 
 
                 diff_stats = []
