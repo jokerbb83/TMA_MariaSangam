@@ -4518,9 +4518,36 @@ def render_tab_today_session(tab):
                 with col4:
                     _render_one("t2b", k4)
 
-        def _manual_gender_to_mode(manual_gender_mode: str) -> str:
-            # UI 값("성별랜덤","동성","혼합") → 내부 값("랜덤","동성","혼합")
-            return "혼합" if manual_gender_mode == "혼합" else "동성" if manual_gender_mode == "동성" else "랜덤"
+        def _manual_gender_to_mode(manual_gender_mode: str, same_submode: str | None = None, for_checked: bool = False) -> str:
+            """수동 입력 UI의 성별 옵션을 내부 gender_mode 값으로 변환.
+            - manual_gender_mode: '성별랜덤' / '동성' / '혼합'
+            - same_submode (동성일 때만): '동성복식' / '남성복식' / '여성복식'
+            - for_checked: 체크된 게임만 채우기 버튼에서 호출인지 여부
+
+            내부 gender_mode:
+              - '랜덤'
+              - '혼합'
+              - '동성랜덤'  (동성복식: 게임별로 남/여 동성복식을 랜덤 선택)
+              - '동성남'    (남성복식)
+              - '동성여'    (여성복식)
+            """
+            if manual_gender_mode == "혼합":
+                return "혼합"
+            if manual_gender_mode != "동성":
+                return "랜덤"
+
+            # ✅ 동성 세부 옵션 결정
+            ss = same_submode or st.session_state.get("manual_same_gender_submode", "동성복식")
+
+            # ✅ 남성/여성복식은 '체크된 게임만'에서만 강제 적용
+            if (not for_checked) and ss in ("남성복식", "여성복식"):
+                ss = "동성복식"
+
+            if ss == "남성복식":
+                return "동성남"
+            if ss == "여성복식":
+                return "동성여"
+            return "동성랜덤"
 
         def _fill_round_plan(
             r: int,
@@ -4756,11 +4783,43 @@ def render_tab_today_session(tab):
                             picks.append(pick)
 
 
-                elif gender_mode == "동성":
-                    already_gender = _gender_of(already[0]) if already else None
-                    cand = men if already_gender == "남" else women if already_gender == "여" else (men if len(men) >= need else women)
+                elif gender_mode in ("동성", "동성랜덤", "동성남", "동성여"):
+                    # ✅ 동성(복식) 채우기:
+                    #   - 동성복식(동성랜덤): 게임(코트)별로 남/여 동성복식을 랜덤 선택
+                    #   - 남성복식(동성남) / 여성복식(동성여): 해당 성별 우선
+                    #   - 인원 부족하면 다른 성별이 들어가도 OK
+                    desired = None
+                    if gender_mode == "동성남":
+                        desired = "남"
+                    elif gender_mode == "동성여":
+                        desired = "여"
+
+                    # 이미 일부가 채워져 있으면(수동 고정 등) 그 성별을 우선 따름(가능할 때)
+                    if already:
+                        ag = {g for g in (_gender_of(x) for x in already) if g in ("남", "여")}
+                        if len(ag) == 1:
+                            desired = list(ag)[0]
+
+                    # 동성복식(동성/동성랜덤)인 경우: 남/여 가능하면 랜덤 선택
+                    if desired is None:
+                        can_m = len(men) >= need
+                        can_w = len(women) >= need
+                        if can_m and can_w:
+                            desired = rng.choice(["남", "여"])
+                        elif can_m:
+                            desired = "남"
+                        elif can_w:
+                            desired = "여"
+
+                    cand = men if desired == "남" else women if desired == "여" else []
+
                     if len(cand) >= need:
                         picks = rng.sample(cand, need)
+                    else:
+                        # 부족하면 다른 성별 포함해서 채움
+                        rest = men + women
+                        if len(rest) >= need:
+                            picks = rng.sample(rest, need)
 
                 else:
                     rest = men + women
@@ -5977,6 +6036,20 @@ def render_tab_today_session(tab):
                 key="manual_gender_mode",
                 label_visibility="collapsed",
             )
+
+            # ✅ 동성 옵션 세부 설정 (동성 선택 시에만 노출)
+            manual_same_gender_submode = None
+            if manual_gender_mode == "동성":
+                st.markdown("<div style='height:0.15rem;'></div>", unsafe_allow_html=True)
+                manual_same_gender_submode = st.radio(
+                    "동성 세부 옵션",
+                    ["동성복식", "남성복식", "여성복식"],
+                    horizontal=True,
+                    key="manual_same_gender_submode",
+                    label_visibility="collapsed",
+                )
+                # 디폴트는 '동성복식' (라디오 첫 값)
+
             manual_fill_ntrp = st.checkbox("NTRP 고려", key="manual_fill_ntrp")
 
             # ✅ 모바일에서도 버튼 2개를 한 줄(좌/우 반반)로 유지
@@ -6043,7 +6116,7 @@ def render_tab_today_session(tab):
             #   - ✅ 이전에 자동으로 들어간 값은 이번 클릭에서 다시 랜덤으로 갈아끼움
             # -------------------------
             if fill_all_clicked and players_selected:
-                gm = _manual_gender_to_mode(manual_gender_mode)
+                gm = _manual_gender_to_mode(manual_gender_mode, st.session_state.get('manual_same_gender_submode', '동성복식'), for_checked=False)
 
                 # ✅ 버튼 누를 때마다 결과가 달라지게
                 seed_base = int(random.random() * 1_000_000_000)
@@ -6135,7 +6208,7 @@ def render_tab_today_session(tab):
 
             # ✅ 체크된 게임 빈칸 채우기
             if fill_checked_clicked and players_selected and selected_games:
-                gm = _manual_gender_to_mode(manual_gender_mode)
+                gm = _manual_gender_to_mode(manual_gender_mode, st.session_state.get('manual_same_gender_submode', '동성복식'), for_checked=True)
 
                 # ✅ 버튼 누를 때마다 결과가 달라지게
                 seed_base = int(random.random() * 1_000_000_000)
