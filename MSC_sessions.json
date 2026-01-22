@@ -7718,6 +7718,7 @@
       "송지예": "B조",
       "유대한": "A조"
     },
-    "scores_locked": true
+    "scores_locked": true,
+    "score_view_mode": "조별 보기 (A/B조)"
   }
 }
