@@ -19,9 +19,6 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-import io
-from PIL import Image
-
 
 # =========================================================
 # ✅ 멀티 동호회용 설정
@@ -7263,166 +7260,140 @@ with tab3:
                     st.markdown(f'<div id="{capture_id_p}__end"></div>', unsafe_allow_html=True)
 
                     # =========================================================
-                    
-                                        # =========================================================
-                    # ✅ [개인별 보기] 이미지 저장 (JPEG) - ✅ 서버사이드(전체 행 포함)
-                    #   - 브라우저 캡처(html2canvas)는 st.dataframe 가상렌더/스크롤 때문에 빈 화면/누락 발생
-                    #   - DataFrame을 matplotlib로 직접 이미지(JPEG) 생성 → 다운로드
+                    # ✅ [개인별 보기] 이미지 저장 버튼만 (JPEG)
+                    #   - start/end 사이 DOM을 복제해서 캡처
                     # =========================================================
+                    components.html(
+                        f"""
+                        <div style="display:flex; gap:12px; margin-top:14px; align-items:center;">
+                          <button id="{capture_id_p}__save"
+                            style="flex:1; padding:10px 12px; border-radius:10px; border:1px solid rgba(0,0,0,0.15);
+                                   background:white; cursor:pointer; font-weight:700;">
+                            개인별 표 이미지 저장 (JPEG)
+                          </button>
+                          <span id="{capture_id_p}__msg" style="font-size:12px; opacity:0.7;"></span>
+                        </div>
 
-                    def _df_to_jpeg_bytes(_df: pd.DataFrame, _title: str) -> bytes:
-                        df_img = _df.copy()
-                        df_img.insert(0, "", df_img.index.astype(str))
+                        <script>
+                        (function() {{
+                          const capId = {json.dumps(capture_id_p)};
+                          const fileName = "개인별표_" + {json.dumps(str(sel_date))}.replace(/[^0-9a-zA-Z_\\-]+/g, "_") + ".jpg";
 
-                        nrows, ncols = df_img.shape
-                        fig_w = max(8.5, ncols * 1.1)
-                        fig_h = max(2.5, (nrows + 2) * 0.36)
+                          const msgEl  = document.getElementById(capId + "__msg");
+                          const btnSave = document.getElementById(capId + "__save");
 
-                        fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=160)
-                        ax.axis("off")
+                          function setMsg(m) {{
+                            if (msgEl) msgEl.textContent = m;
+                          }}
 
-                        ax.text(
-                            0.0, 1.02, str(_title),
-                            transform=ax.transAxes,
-                            fontsize=18,
-                            fontweight="bold",
-                            va="bottom",
-                            ha="left",
-                            color="#111827"
-                        )
+                          function ensureHtml2Canvas() {{
+                            return new Promise((resolve, reject) => {{
+                              const p = window.parent;
+                              if (p && p.html2canvas) {{
+                                resolve(p.html2canvas);
+                                return;
+                              }}
+                              const ps = p.document.createElement("script");
+                              ps.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+                              ps.onload = () => resolve(p.html2canvas);
+                              ps.onerror = reject;
+                              p.document.head.appendChild(ps);
+                            }});
+                          }}
 
-                        tbl = ax.table(
-                            cellText=df_img.values,
-                            colLabels=df_img.columns,
-                            cellLoc="center",
-                            colLoc="center",
-                            loc="upper left",
-                        )
+                          if (btnSave) {{
+                            btnSave.onclick = async function() {{
+                              try {{
+                                setMsg("이미지 생성중…");
+                                const pdoc = window.parent.document;
 
-                        tbl.auto_set_font_size(False)
-                        tbl.set_fontsize(10)
-                        tbl.scale(1.0, 1.35)
+                                const start = pdoc.getElementById(capId + "__start");
+                                const end   = pdoc.getElementById(capId + "__end");
+                                if (!start || !end) {{
+                                  setMsg("캡처 마커를 찾지 못했어.");
+                                  return;
+                                }}
 
-                        header_bg = "#f9fafb"
-                        grid = "#e5e7eb"
-                        win_bg = "#fef9c3"
-                        lose_bg = "#e5e7eb"
-                        male_bg = "#dbeafe"
-                        female_bg = "#fee2e2"
-                        neutral_bg = "#f3f4f6"
-                        white_bg = "#ffffff"
+                                const startTop = start.closest('div[data-testid="stElementContainer"]')
+                                              || start.closest('div.element-container')
+                                              || start.parentElement;
 
-                        cols = list(df_img.columns)
-                        col_idx = {c: i for i, c in enumerate(cols)}
-                        name_col = col_idx.get("이름", None)
-                        game_cols = [c for c in cols if re.match(r"^[1-9]\d*게임$", str(c))]
+                                const endTop   = end.closest('div[data-testid="stElementContainer"]')
+                                              || end.closest('div.element-container')
+                                              || end.parentElement;
 
-                        def _parse_score(v):
-                            if not isinstance(v, str):
-                                return None
-                            s = v.replace(" ", "")
-                            if ":" not in s:
-                                return None
-                            a, b = s.split(":", 1)
-                            try:
-                                return int(a), int(b)
-                            except Exception:
-                                return None
+                                let common = startTop ? startTop.parentElement : null;
+                                while (common && endTop && !common.contains(endTop)) {{
+                                  common = common.parentElement;
+                                }}
+                                if (!common) {{
+                                  setMsg("캡처 범위(공통부모) 찾기 실패");
+                                  return;
+                                }}
 
-                        for (r, c), cell in tbl.get_celld().items():
-                            cell.set_edgecolor(grid)
-                            cell.set_linewidth(0.6)
+                                const kids = Array.from(common.children);
+                                const si = kids.indexOf(startTop);
+                                const ei = kids.indexOf(endTop);
 
-                            if r == 0:
-                                cell.set_facecolor(header_bg)
-                                cell.get_text().set_fontweight("bold")
-                                cell.get_text().set_color("#374151")
-                                continue
+                                if (si < 0 || ei < 0 || ei <= si) {{
+                                  setMsg("캡처 범위 인덱스 오류");
+                                  return;
+                                }}
 
-                            cell.set_facecolor(white_bg)
-                            col_name = cols[c] if c < len(cols) else ""
+                                const wrapper = pdoc.createElement("div");
+                                wrapper.style.position = "fixed";
+                                wrapper.style.left = "-100000px";
+                                wrapper.style.top = "0";
+                                wrapper.style.background = "#ffffff";
+                                const PAD = 24;
+                                wrapper.style.boxSizing = "border-box";
+                                wrapper.style.width = ((common.clientWidth || 1200) + (PAD*2)) + "px";
+                                wrapper.style.padding = PAD + "px";
+                                wrapper.style.margin = "0";
 
-                            if (name_col is not None) and (c == name_col):
-                                nm = str(df_img.iloc[r - 1, c])
-                                info = roster_by_name.get(nm, {}) or {}
-                                g = info.get("gender")
-                                if g == "남":
-                                    cell.set_facecolor(male_bg)
-                                elif g == "여":
-                                    cell.set_facecolor(female_bg)
-                                else:
-                                    cell.set_facecolor(neutral_bg)
-                                cell.get_text().set_fontweight("bold")
-                                cell.get_text().set_color("#111827")
+                                for (let i = si + 1; i < ei; i++) {{
+                                  wrapper.appendChild(kids[i].cloneNode(true));
+                                }}
 
-                            if col_name in game_cols:
-                                val = df_img.iloc[r - 1, c]
-                                parsed = _parse_score(val)
-                                if parsed is not None:
-                                    a, b = parsed
-                                    if a > b:
-                                        cell.set_facecolor(win_bg)
-                                    elif a < b:
-                                        cell.set_facecolor(lose_bg)
+                                pdoc.body.appendChild(wrapper);
 
-                        fig.tight_layout(pad=0.6)
-                        buf = io.BytesIO()
-                        fig.savefig(buf, format="jpeg", dpi=160, bbox_inches="tight")
-                        plt.close(fig)
-                        buf.seek(0)
-                        return buf.read()
+                                const h2c = await ensureHtml2Canvas();
+                                const canvas = await h2c(wrapper, {{
+                                  backgroundColor: "#ffffff",
+                                  scale: 2,
+                                  useCORS: true
+                                }});
 
-                    def _concat_jpegs_vert(jpeg_bytes_list: list[bytes], pad: int = 28) -> bytes:
-                        imgs = [Image.open(io.BytesIO(b)).convert("RGB") for b in jpeg_bytes_list if b]
-                        if not imgs:
-                            return b""
-                        w = max(im.width for im in imgs)
-                        total_h = sum(im.height for im in imgs) + pad * (len(imgs) - 1)
-                        canvas = Image.new("RGB", (w, total_h), (255, 255, 255))
-                        y = 0
-                        for im in imgs:
-                            x = (w - im.width) // 2
-                            canvas.paste(im, (x, y))
-                            y += im.height + pad
-                        out = io.BytesIO()
-                        canvas.save(out, format="JPEG", quality=95)
-                        out.seek(0)
-                        return out.read()
+                                wrapper.remove();
 
-                    col_save, col_msg = st.columns([4, 1])
-                    with col_save:
-                        make_jpeg = st.button("개인별 표 이미지 저장 (JPEG)", use_container_width=True, key=f"{capture_id_p}_makejpeg")
-                    with col_msg:
-                        _msg = st.empty()
+                                const url = canvas.toDataURL("image/jpeg", 0.95);
+                                const a = pdoc.createElement("a");
+                                a.href = url;
+                                a.download = fileName;
+                                pdoc.body.appendChild(a);
+                                a.click();
+                                a.remove();
 
-                    if make_jpeg:
-                        try:
-                            if not capture_personal_tables:
-                                _msg.warning("표 없음")
-                            else:
-                                jpegs = [_df_to_jpeg_bytes(df, title) for (title, df) in capture_personal_tables]
-                                merged = _concat_jpegs_vert(jpegs, pad=28)
-                                st.session_state[f"{capture_id_p}__jpeg_bytes"] = merged
-                                _msg.success("완료")
-                        except Exception as e:
-                            st.session_state.pop(f"{capture_id_p}__jpeg_bytes", None)
-                            _msg.error("실패")
-                            st.error(f"이미지 생성 실패: {e}")
+                                setMsg("JPEG 저장 완료!");
+                              }} catch (e) {{
+                                console.log(e);
+                                setMsg("저장 실패(콘솔 확인)");
+                              }}
+                            }};
+                          }}
+                        }})();
+                        </script>
+                        """,
+                        height=80,
+                    )
 
-                    jpeg_bytes = st.session_state.get(f"{capture_id_p}__jpeg_bytes", b"")
-                    if jpeg_bytes:
-                        fname = "개인별표_" + str(sel_date).replace("/", "_").replace(" ", "_") + ".jpg"
-                        st.download_button(
-                            "다운로드 (JPEG)",
-                            data=jpeg_bytes,
-                            file_name=fname,
-                            mime="image/jpeg",
-                            use_container_width=True,
-                            key=f"{capture_id_p}_downloadjpeg",
-                        )
 
-                    # =========================================================
 
+
+# =========================================================
+
+
+        # =========================================================
         # 2. 날짜별 요약 리포트 (선택 날짜 기준)
         #   - ✅ 스코어보드/옵저버(읽기 전용) 화면에서만 여기(요약표 아래) 표시
         #   - ✅ 관리자 모드에서는 아래 '전체 경기 스코어' 섹션 하단에서 1번만 표시
@@ -9386,137 +9357,6 @@ with tab5:
                         df["승률"] = df["승률"].map(lambda x: f"{x:.1f}%")
                         return df
 
-
-                    # =========================================================
-                    # ✅ [월간 순위표] 표 JPG 저장 (브라우저 캡처 - 전체 행 포함)
-                    #   - st.dataframe은 가상 렌더(스크롤)로 DOM에 전체 행이 없어서 캡처가 비거나 누락될 수 있음
-                    #   - 그래서 '전체 행이 들어간 정적 HTML 표'를 숨겨서 렌더한 뒤, html2canvas로 그 DOM을 캡처해 JPG로 저장
-                    #   - (matplotlib 불필요)
-                    # =========================================================
-                    def _month_rank_static_table_html(_df: pd.DataFrame, _title: str) -> str:
-                        df_img = _df.copy()
-                        df_img.insert(0, "순위", df_img.index.astype(int))
-
-                        cols = list(df_img.columns)
-
-                        def td_style_for(col_name: str, value: str) -> str:
-                            # 이름 컬러칩(셀 배경)
-                            if col_name == "이름":
-                                info = roster_by_name.get(value, {}) or {}
-                                g = info.get("gender")
-                                if g == "남":
-                                    return "background:#dbeafe; font-weight:800; color:#111827;"
-                                if g == "여":
-                                    return "background:#fee2e2; font-weight:800; color:#111827;"
-                                return "background:#f3f4f6; font-weight:800; color:#111827;"
-                            return ""
-
-                        # 테이블 HTML (전체 행 포함)
-                        parts = []
-                        parts.append("<div style='font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; background:#ffffff;'>")
-                        parts.append(f"<div style='font-size:22px; font-weight:900; margin:0 0 14px 0; color:#111827;'>{_html.escape(str(_title))}</div>")
-                        parts.append("<table style='border-collapse:collapse; width:100%; font-size:14px;'>")
-                        # header
-                        parts.append("<thead><tr>")
-                        for c in cols:
-                            parts.append(
-                                f"<th style='border:1px solid #e5e7eb; padding:8px 10px; background:#f9fafb; color:#374151; font-weight:800; text-align:center;'>{_html.escape(str(c))}</th>"
-                            )
-                        parts.append("</tr></thead>")
-                        # body
-                        parts.append("<tbody>")
-                        for _, row in df_img.iterrows():
-                            parts.append("<tr>")
-                            for c in cols:
-                                v = row[c]
-                                v_str = "" if pd.isna(v) else str(v)
-                                style = td_style_for(c, v_str)
-                                parts.append(
-                                    f"<td style='border:1px solid #e5e7eb; padding:8px 10px; text-align:center; {style}'>{_html.escape(v_str)}</td>"
-                                )
-                            parts.append("</tr>")
-                        parts.append("</tbody></table></div>")
-                        return "".join(parts)
-
-                    def _render_month_rank_jpg_button(_cap_id: str, _file_name: str, _btn_label: str = "순위표 JPG 저장하기"):
-                        # 버튼 1개: 클릭 시 숨겨진 표 DOM을 캡처해서 JPG로 다운로드
-                        components.html(
-                            f"""
-                            <div style="display:flex; gap:10px; margin-top:12px; align-items:center;">
-                              <button id="{_cap_id}__save"
-                                style="flex:1; padding:12px 12px; border-radius:12px; border:1px solid rgba(0,0,0,0.15);
-                                       background:white; cursor:pointer; font-weight:800;">
-                                {_btn_label}
-                              </button>
-                              <span id="{_cap_id}__msg" style="font-size:12px; opacity:0.7;"></span>
-                            </div>
-
-                            <script>
-                            (function() {{
-                              const capId = {json.dumps(_cap_id)};
-                              const fileName = {json.dumps(_file_name)};
-                              const msgEl  = document.getElementById(capId + "__msg");
-                              const btnSave = document.getElementById(capId + "__save");
-
-                              function setMsg(m) {{
-                                if (msgEl) msgEl.textContent = m;
-                              }}
-
-                              function ensureHtml2Canvas() {{
-                                return new Promise((resolve, reject) => {{
-                                  const p = window.parent;
-                                  if (p && p.html2canvas) {{
-                                    resolve(p.html2canvas);
-                                    return;
-                                  }}
-                                  const ps = p.document.createElement("script");
-                                  ps.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
-                                  ps.onload = () => resolve(p.html2canvas);
-                                  ps.onerror = reject;
-                                  p.document.head.appendChild(ps);
-                                }});
-                              }}
-
-                              if (btnSave) {{
-                                btnSave.onclick = async function() {{
-                                  try {{
-                                    setMsg("이미지 생성중…");
-                                    const pdoc = window.parent.document;
-                                    const el = pdoc.getElementById(capId + "__content");
-                                    if (!el) {{
-                                      setMsg("캡처 대상을 찾지 못했어.");
-                                      return;
-                                    }}
-
-                                    const h2c = await ensureHtml2Canvas();
-                                    const canvas = await h2c(el, {{
-                                      backgroundColor: "#ffffff",
-                                      scale: 2,
-                                      useCORS: true
-                                    }});
-
-                                    const url = canvas.toDataURL("image/jpeg", 0.95);
-                                    const a = pdoc.createElement("a");
-                                    a.href = url;
-                                    a.download = fileName;
-                                    pdoc.body.appendChild(a);
-                                    a.click();
-                                    a.remove();
-
-                                    setMsg("JPG 저장 완료!");
-                                  }} catch (e) {{
-                                    console.log(e);
-                                    setMsg("저장 실패(콘솔 확인)");
-                                  }}
-                                }};
-                              }}
-                            }})();
-                            </script>
-                            """,
-                            height=72,
-                        )
-
-
                     # ---------------------------------------------------------
                     # 1-3) 순위표 출력
                     # ---------------------------------------------------------
@@ -9528,17 +9368,6 @@ with tab5:
                             sty_rank = colorize_df_names(rank_df, roster_by_name, ["이름"])
                             smart_table(sty_rank, use_container_width=True)
 
-                            # ✅ 순위표 JPG 저장(전체) - 전체 행 포함 정적 HTML 캡처
-                            _safe_month = re.sub(r"[^0-9a-zA-Z_\-]+", "_", str(sel_month))
-                            _cap_id = f"month_rank_all_{_safe_month}"
-                            _title = f"{sel_month} 월간 선수 순위표 (전체)"
-                            _tbl_html = _month_rank_static_table_html(rank_df, _title)
-                            st.markdown(
-                                f'<div id="{_cap_id}__content" style="position:fixed; left:-100000px; top:0; width:1200px; padding:24px; background:#ffffff; box-sizing:border-box;">{_tbl_html}</div>',
-                                unsafe_allow_html=True,
-                            )
-                            _fname = f"월간순위표_{sel_month}_전체.jpg".replace("/", "_").replace(" ", "_")
-                            _render_month_rank_jpg_button(_cap_id, _fname, "전체 순위표 JPG 저장하기")
                     else:
                         # ✅ 조별보기: 집계는 동일(recs_all), 선수만 A/B로 나누기
                         names_A = sorted([n for n, g in player_month_group.items() if g == "A"])
@@ -9554,34 +9383,12 @@ with tab5:
                             sty_A = colorize_df_names(rank_df_A, roster_by_name, ["이름"])
                             smart_table(sty_A, use_container_width=True)
 
-                            # ✅ 순위표 JPG 저장(A조) - 전체 행 포함 정적 HTML 캡처
-                            _safe_month = re.sub(r"[^0-9a-zA-Z_\-]+", "_", str(sel_month))
-                            _cap_id = f"month_rank_A_{_safe_month}"
-                            _title = f"{sel_month} 월간 선수 순위표 (A조)"
-                            _tbl_html = _month_rank_static_table_html(rank_df_A, _title)
-                            st.markdown(
-                                f'<div id="{_cap_id}__content" style="position:fixed; left:-100000px; top:0; width:1200px; padding:24px; background:#ffffff; box-sizing:border-box;">{_tbl_html}</div>',
-                                unsafe_allow_html=True,
-                            )
-                            _fname = f"월간순위표_{sel_month}_A조.jpg".replace("/", "_").replace(" ", "_")
-                            _render_month_rank_jpg_button(_cap_id, _fname, "A조 순위표 JPG 저장하기")
                         if rank_df_B is not None:
                             has_any = True
                             st.markdown("### 🟦 B조 월간 선수 순위표")
                             sty_B = colorize_df_names(rank_df_B, roster_by_name, ["이름"])
                             smart_table(sty_B, use_container_width=True)
 
-                            # ✅ 순위표 JPG 저장(B조) - 전체 행 포함 정적 HTML 캡처
-                            _safe_month = re.sub(r"[^0-9a-zA-Z_\-]+", "_", str(sel_month))
-                            _cap_id = f"month_rank_B_{_safe_month}"
-                            _title = f"{sel_month} 월간 선수 순위표 (B조)"
-                            _tbl_html = _month_rank_static_table_html(rank_df_B, _title)
-                            st.markdown(
-                                f'<div id="{_cap_id}__content" style="position:fixed; left:-100000px; top:0; width:1200px; padding:24px; background:#ffffff; box-sizing:border-box;">{_tbl_html}</div>',
-                                unsafe_allow_html=True,
-                            )
-                            _fname = f"월간순위표_{sel_month}_B조.jpg".replace("/", "_").replace(" ", "_")
-                            _render_month_rank_jpg_button(_cap_id, _fname, "B조 순위표 JPG 저장하기")
                         if not has_any:
                             st.info("A조 / B조로 나눠서 표시할 데이터가 없습니다.")
 
