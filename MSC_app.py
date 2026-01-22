@@ -7721,12 +7721,26 @@ with tab3:
                                 {_sep_css}
                                 margin-bottom:0.18rem;
                             ">
-                                <span style="font-weight:600; font-size:0.96rem;">
-                                    게임 {local_no}
-                                </span>
-                                <span style="font-size:0.82rem; color:#6b7280; margin-left:6px;">
-                                    ({gtype}{', 코트 ' + str(court) if court else ''})
-                                </span>
+                                <div style="display:flex; align-items:baseline; gap:6px; flex-wrap:wrap;">
+                                    <span style="font-weight:600; font-size:0.96rem;">
+                                        게임 {local_no}
+                                    </span>
+                                    <span style="font-size:0.82rem; color:#6b7280;">
+                                        ({gtype}{', 코트 ' + str(court) if court else ''})
+                                    </span>
+                                </div>
+
+                                <div style="margin-top:0.12rem; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                    <span>
+                                        {render_name_pills(t1)}
+                                    </span>
+                                    <span style="font-weight:800; font-size:0.82rem; color:#6b7280;">
+                                        VS
+                                    </span>
+                                    <span>
+                                        {render_name_pills(t2)}
+                                    </span>
+                                </div>
                             </div>
                             """,
                             unsafe_allow_html=True,
@@ -9703,6 +9717,7 @@ with tab5:
 # ✅ 모든 탭 공통 푸터
 # =========================================================
 render_footer()
+
 
 
 
