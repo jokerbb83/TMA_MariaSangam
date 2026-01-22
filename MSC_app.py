@@ -7651,19 +7651,20 @@ with tab3:
                             unsafe_allow_html=True,
                         )
                     # 배지 모양 이름 줄 (성별에 따라 배경색 다르게)
-                    def render_name_pills(players):
+                    def render_name_pills(players, with_commas: bool = False):
+                        """성별에 따라 배경색이 다른 이름 컬러칩(배지) HTML을 만든다.
+                        with_commas=True 이면 '이름,이름'처럼 콤마 구분자를 같이 넣는다."""
                         html_parts = []
-                        for p in players:
+                        players = list(players) if players is not None else []
+                        for i, p in enumerate(players):
                             info = roster_by_name.get(p, {}) or {}
                             g = info.get("gender")
-
                             if g == "남":
                                 bg = "#dbeafe"   # 연한 파랑
                             elif g == "여":
                                 bg = "#fee2e2"   # 연한 빨강
                             else:
                                 bg = "#f3f4f6"   # 회색
-
                             html_parts.append(
                                 f"<span class='name-badge' style='"
                                 f"background:{bg};"
@@ -7678,6 +7679,8 @@ with tab3:
                                 f"{p}"
                                 f"</span>"
                             )
+                            if with_commas and i < len(players) - 1:
+                                html_parts.append("<span style='margin-right:4px; color:#6b7280; font-weight:800;'>,</span>")
                         return "".join(html_parts)
                     # 라디오 옵션에 붙일 성별 색상 라벨 (남 🔵 / 여 🔴)
                     def gender_badge_label(name: str) -> str:
@@ -7714,37 +7717,23 @@ with tab3:
                         _sep_css = "border-top:1px solid #e5e7eb;" if _show_sep else "border-top:none;"
                         _top_css = "margin-top:0.6rem; padding-top:0.4rem;" if _show_sep else "margin-top:0.25rem; padding-top:0.15rem;"
 
-                        st.markdown(
-                            f"""
-                            <div style="
-                                {_top_css}
-                                {_sep_css}
-                                margin-bottom:0.18rem;
-                            ">
-                                <div style="display:flex; align-items:baseline; gap:6px; flex-wrap:wrap;">
-                                    <span style="font-weight:600; font-size:0.96rem;">
-                                        게임 {local_no}
-                                    </span>
-                                    <span style="font-size:0.82rem; color:#6b7280;">
-                                        ({gtype}{', 코트 ' + str(court) if court else ''})
-                                    </span>
-                                </div>
-
-                                <div style="margin-top:0.12rem; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                                    <span>
-                                        {render_name_pills(t1)}
-                                    </span>
-                                    <span style="font-weight:800; font-size:0.82rem; color:#6b7280;">
-                                        VS
-                                    </span>
-                                    <span>
-                                        {render_name_pills(t2)}
-                                    </span>
-                                </div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True,
-                        )
+                        _t1_pills = render_name_pills(t1, with_commas=True)
+                        _t2_pills = render_name_pills(t2, with_commas=True)
+                        _game_header_html = "\n".join([
+                            f"<div style=\"{_top_css}{_sep_css}margin-bottom:0.18rem;\">",
+                            "<div style=\"display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px;\">",
+                            f"<div style=\"display:flex; align-items:center; flex-wrap:wrap;\">"
+                            f"<span style=\\\"font-weight:600; font-size:0.96rem;\\\">게임 {local_no}</span>"
+                            f"<span style=\\\"font-size:0.82rem; color:#6b7280; margin-left:6px;\\\">"
+                            f"({gtype}{', 코트 ' + str(court) if court else ''})</span></div>",
+                            f"<div style=\"display:flex; align-items:center; flex-wrap:wrap; justify-content:flex-end;\">"
+                            f"<span style=\\\"display:flex; align-items:center; flex-wrap:wrap;\\\">{_t1_pills}</span>"
+                            f"<span style=\\\"font-weight:800; color:#6b7280; margin:0 6px;\\\">VS</span>"
+                            f"<span style=\\\"display:flex; align-items:center; flex-wrap:wrap;\\\">{_t2_pills}</span></div>",
+                            "</div>",
+                            "</div>",
+                        ])
+                        st.markdown(_game_header_html, unsafe_allow_html=True)
 
 
                         # 저장돼 있던 값
