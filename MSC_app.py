@@ -9027,6 +9027,9 @@ with tab4:
                 if vs_opponent:
                     rows = []
                     for name, r in vs_opponent.items():
+                        # ✅ 등록된 선수에서 삭제된 이름은 통계에서 숨김
+                        if (name not in roster_by_name):
+                            continue
                         if r["G"] == 0:
                             continue
                         win_rate = r["W"] / r["G"] * 100
@@ -9060,6 +9063,9 @@ with tab4:
                 if with_partner:
                     rows = []
                     for name, r in with_partner.items():
+                        # ✅ 등록된 선수에서 삭제된 이름은 통계에서 숨김
+                        if (name not in roster_by_name):
+                            continue
                         if r["G"] == 0:
                             continue
                         win_rate = r["W"] / r["G"] * 100
