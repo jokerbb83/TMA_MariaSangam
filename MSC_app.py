@@ -26,7 +26,7 @@ import streamlit.components.v1 as components
 #   - 스코어보드(읽기전용) 타이틀/색/푸터는 APP_MODE로 자동 분기
 # =========================================================
 def CLUB_NAME() -> str:
-    return "마리아상암포바"
+    return "test site"
 
 # ✅ 관리자(메인) 앱 타이틀
 ADMIN_PURPOSE = "관리 도우미(Beta)"  # 예: "도우미 (Beta)"
@@ -9703,6 +9703,7 @@ with tab5:
 # ✅ 모든 탭 공통 푸터
 # =========================================================
 render_footer()
+
 
 
 
