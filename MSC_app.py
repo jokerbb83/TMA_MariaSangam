@@ -9142,6 +9142,9 @@ with tab4:
                 if vs_opponent:
                     rows = []
                     for name, r in vs_opponent.items():
+                        # ✅ 현재 등록 선수(roster)에 없는 상대/게스트는 통계에서 제외
+                        if (name not in roster_by_name) or is_guest_name(name, roster):
+                            continue
                         if r["G"] == 0:
                             continue
                         win_rate = r["W"] / r["G"] * 100
@@ -9175,6 +9178,9 @@ with tab4:
                 if with_partner:
                     rows = []
                     for name, r in with_partner.items():
+                        # ✅ 현재 등록 선수(roster)에 없는 파트너/게스트는 통계에서 제외
+                        if (name not in roster_by_name) or is_guest_name(name, roster):
+                            continue
                         if r["G"] == 0:
                             continue
                         win_rate = r["W"] / r["G"] * 100
