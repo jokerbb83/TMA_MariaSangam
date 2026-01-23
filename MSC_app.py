@@ -9569,12 +9569,12 @@ with tab5:
                         parts = []
                         parts.append("<div style='font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; background:#ffffff;'>")
                         parts.append(f"<div style='font-size:22px; font-weight:900; margin:0 0 14px 0; color:#111827;'>{_html.escape(str(_title))}</div>")
-                        parts.append("<table style='border-collapse:collapse; width:100%; font-size:14px;'>")
+                        parts.append("<table style='border-collapse:collapse; width:auto; display:inline-table; font-size:13px; table-layout:auto;'>")
                         # header
                         parts.append("<thead><tr>")
                         for c in cols:
                             parts.append(
-                                f"<th style='border:1px solid #e5e7eb; padding:8px 10px; background:#f9fafb; color:#374151; font-weight:800; text-align:center;'>{_html.escape(str(c))}</th>"
+                                f"<th style='border:1px solid #e5e7eb; padding:7px 8px; background:#f9fafb; color:#374151; font-weight:800; text-align:center;'>{_html.escape(str(c))}</th>"
                             )
                         parts.append("</tr></thead>")
                         # body
@@ -9586,11 +9586,52 @@ with tab5:
                                 v_str = "" if pd.isna(v) else str(v)
                                 style = td_style_for(c, v_str)
                                 parts.append(
-                                    f"<td style='border:1px solid #e5e7eb; padding:8px 10px; text-align:center; {style}'>{_html.escape(v_str)}</td>"
+                                    f"<td style='border:1px solid #e5e7eb; padding:7px 8px; text-align:center; {style}'>{_html.escape(v_str)}</td>"
                                 )
                             parts.append("</tr>")
                         parts.append("</tbody></table></div>")
                         return "".join(parts)
+
+
+                    def _month_rank_table_only_html(_df: pd.DataFrame) -> str:
+                        """월간 순위표 캡처용: 타이틀 없이 테이블만 반환(폭 자동)"""
+                        df_img = _df.copy()
+                        df_img.insert(0, "순위", df_img.index.astype(int))
+                        cols = list(df_img.columns)
+
+                        def td_style_for(col_name: str, value: str) -> str:
+                            if col_name == "이름":
+                                info = roster_by_name.get(value, {}) or {}
+                                g = info.get("gender")
+                                if g == "남":
+                                    return "background:#dbeafe; font-weight:800; color:#111827;"
+                                if g == "여":
+                                    return "background:#fee2e2; font-weight:800; color:#111827;"
+                                return "background:#f3f4f6; font-weight:800; color:#111827;"
+                            return ""
+
+                        parts = []
+                        parts.append("<table style='border-collapse:collapse; width:auto; display:inline-table; font-size:13px; table-layout:auto;'>")
+                        parts.append("<thead><tr>")
+                        for c in cols:
+                            parts.append(
+                                f"<th style='border:1px solid #e5e7eb; padding:7px 8px; background:#f9fafb; color:#374151; font-weight:800; text-align:center;'>{_html.escape(str(c))}</th>"
+                            )
+                        parts.append("</tr></thead>")
+                        parts.append("<tbody>")
+                        for _, row in df_img.iterrows():
+                            parts.append("<tr>")
+                            for c in cols:
+                                v = row[c]
+                                v_str = "" if pd.isna(v) else str(v)
+                                style = td_style_for(c, v_str)
+                                parts.append(
+                                    f"<td style='border:1px solid #e5e7eb; padding:7px 8px; text-align:center; {style}'>{_html.escape(v_str)}</td>"
+                                )
+                            parts.append("</tr>")
+                        parts.append("</tbody></table>")
+                        return "".join(parts)
+
 
                     def _render_month_rank_jpg_button(_cap_id: str, _file_name: str, _btn_label: str = "순위표 JPG 저장하기"):
                         # 버튼 1개: 클릭 시 숨겨진 표 DOM을 캡처해서 JPG로 다운로드
@@ -9688,7 +9729,7 @@ with tab5:
                             _title = f"{sel_month} 월간 선수 순위표 (전체)"
                             _tbl_html = _month_rank_static_table_html(rank_df, _title)
                             st.markdown(
-                                f'<div id="{_cap_id}__content" style="position:fixed; left:-100000px; top:0; width:1200px; padding:24px; background:#ffffff; box-sizing:border-box;">{_tbl_html}</div>',
+                                f'<div id="{_cap_id}__content" style="position:fixed; left:-100000px; top:0; padding:18px; background:#ffffff; box-sizing:border-box; display:inline-block;">{_tbl_html}</div>',
                                 unsafe_allow_html=True,
                             )
                             _fname = f"월간순위표_{sel_month}_전체.jpg".replace("/", "_").replace(" ", "_")
@@ -9702,40 +9743,54 @@ with tab5:
                         rank_df_B = build_rank_df(recs_all, allowed_names=set(names_B))
 
                         has_any = False
+
+                        # ✅ 조별 저장 버튼(1개): A조+B조를 위아래로 한 장에 저장합니다.
+                        def _render_month_rank_ab_save_button():
+                            _safe_month = re.sub(r"[^0-9a-zA-Z_\-]+", "_", str(sel_month))
+                            _cap_id = f"month_rank_AB_{_safe_month}"
+                            _title = f"{sel_month} 월간 선수 순위표 (조별)"
+
+                            parts = []
+                            parts.append("<div style='font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; background:#ffffff;'>")
+                            parts.append(f"<div style='font-size:22px; font-weight:900; margin:0 0 14px 0; color:#111827;'>{_html.escape(str(_title))}</div>")
+
+                            if rank_df_A is not None:
+                                parts.append("<div style='font-size:18px; font-weight:900; margin:12px 0 8px 0; color:#111827;'>🟥 A조</div>")
+                                parts.append(_month_rank_table_only_html(rank_df_A))
+
+                            if rank_df_B is not None:
+                                parts.append("<div style='font-size:18px; font-weight:900; margin:18px 0 8px 0; color:#111827;'>🟦 B조</div>")
+                                parts.append(_month_rank_table_only_html(rank_df_B))
+
+                            parts.append("</div>")
+                            _tbl_html = "".join(parts)
+
+                            st.markdown(
+                                f'<div id="{_cap_id}__content" style="position:fixed; left:-100000px; top:0; padding:18px; background:#ffffff; box-sizing:border-box; display:inline-block;">{_tbl_html}</div>',
+                                unsafe_allow_html=True,
+                            )
+                            _fname = f"월간순위표_{sel_month}_조별.jpg".replace("/", "_").replace(" ", "_")
+                            _render_month_rank_jpg_button(_cap_id, _fname, "조별 순위표(A/B) JPG 저장하기")
+
                         if rank_df_A is not None:
                             has_any = True
                             st.markdown("### 🟥 A조 월간 선수 순위표")
                             sty_A = colorize_df_names(rank_df_A, roster_by_name, ["이름"])
                             smart_table(sty_A, use_container_width=True)
 
-                            # ✅ 순위표 JPG 저장(A조) - 전체 행 포함 정적 HTML 캡처
-                            _safe_month = re.sub(r"[^0-9a-zA-Z_\-]+", "_", str(sel_month))
-                            _cap_id = f"month_rank_A_{_safe_month}"
-                            _title = f"{sel_month} 월간 선수 순위표 (A조)"
-                            _tbl_html = _month_rank_static_table_html(rank_df_A, _title)
-                            st.markdown(
-                                f'<div id="{_cap_id}__content" style="position:fixed; left:-100000px; top:0; width:1200px; padding:24px; background:#ffffff; box-sizing:border-box;">{_tbl_html}</div>',
-                                unsafe_allow_html=True,
-                            )
-                            _fname = f"월간순위표_{sel_month}_A조.jpg".replace("/", "_").replace(" ", "_")
-                            _render_month_rank_jpg_button(_cap_id, _fname, "A조 순위표 JPG 저장하기")
                         if rank_df_B is not None:
                             has_any = True
                             st.markdown("### 🟦 B조 월간 선수 순위표")
                             sty_B = colorize_df_names(rank_df_B, roster_by_name, ["이름"])
                             smart_table(sty_B, use_container_width=True)
 
-                            # ✅ 순위표 JPG 저장(B조) - 전체 행 포함 정적 HTML 캡처
-                            _safe_month = re.sub(r"[^0-9a-zA-Z_\-]+", "_", str(sel_month))
-                            _cap_id = f"month_rank_B_{_safe_month}"
-                            _title = f"{sel_month} 월간 선수 순위표 (B조)"
-                            _tbl_html = _month_rank_static_table_html(rank_df_B, _title)
-                            st.markdown(
-                                f'<div id="{_cap_id}__content" style="position:fixed; left:-100000px; top:0; width:1200px; padding:24px; background:#ffffff; box-sizing:border-box;">{_tbl_html}</div>',
-                                unsafe_allow_html=True,
-                            )
-                            _fname = f"월간순위표_{sel_month}_B조.jpg".replace("/", "_").replace(" ", "_")
-                            _render_month_rank_jpg_button(_cap_id, _fname, "B조 순위표 JPG 저장하기")
+                            # ✅ 저장 버튼은 B조 아래에 1개만 노출
+                            _render_month_rank_ab_save_button()
+
+                        # ✅ (예외) B조가 없고 A조만 있을 때는 A조 아래에 저장 버튼을 노출합니다.
+                        if (rank_df_B is None) and (rank_df_A is not None):
+                            _render_month_rank_ab_save_button()
+
                         if not has_any:
                             st.info("A조 / B조로 나눠서 표시할 데이터가 없습니다.")
 
