@@ -6340,7 +6340,6 @@ def render_tab_today_session(tab):
 
                 st.markdown("<div style='height:0.6rem;'></div>", unsafe_allow_html=True)
 
-            st.markdown("---")
             # -------------------------
             # 수동 대진 리스트 만들기 (실제 위젯 값 기준)
             # -------------------------
