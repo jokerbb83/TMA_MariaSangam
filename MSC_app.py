@@ -6592,9 +6592,21 @@ def render_tab_today_session(tab):
 
         if st.session_state["edit_mode"] and schedule:
             st.markdown("### ✏️ 대진표 수정 모드")
-            st.caption("경기 1개씩 선수만 바꿀 수 있어. (한 경기 안에서 같은 사람이 중복되면 저장이 안돼)")
+            st.caption("경기 1개씩 선수만 변경하실 수 있습니다. (한 경기 안에서 같은 사람이 중복되면 저장이 되지 않습니다.)")
 
             opts_all = _available_options_for_edit()
+
+            def _opts_excluding_same_match(cur, others):
+                """같은 경기(한 expander) 안에서 이미 선택된 다른 선수는 옵션에서 제외합니다.
+                - 단, 현재 선택값(cur)은 옵션에 반드시 포함시켜 selectbox 오류를 방지합니다.
+                """
+                _others = {o for o in others if o and o != "선택"}
+                _opts = ["선택"] + [p for p in opts_all if p != "선택" and p not in _others]
+                if cur and cur != "선택" and cur not in _opts:
+                    _opts.insert(1, cur)
+                _idx = _opts.index(cur) if cur in _opts else 0
+                return _opts, _idx
+
 
             edited = []   # 최종 수정된 스케줄
 
@@ -6614,17 +6626,23 @@ def render_tab_today_session(tab):
 
                         c1, c2, c3 = st.columns([3.2, 0.9, 3.2], vertical_alignment="center")
                         with c1:
-                            a = st.selectbox("p1", opts_all, index=opts_all.index(st.session_state[k_a]) if st.session_state[k_a] in opts_all else 0, key=k_a, label_visibility="collapsed")
+                            cur_a = st.session_state.get(k_a, "선택")
+                            cur_b = st.session_state.get(k_b, "선택")
+                            _opts_a, _idx_a = _opts_excluding_same_match(cur_a, [cur_b])
+                            a = st.selectbox("p1", _opts_a, index=_idx_a, key=k_a, label_visibility="collapsed")
                         with c2:
                             st.markdown("<div style='text-align:center; font-weight:900;'>VS</div>", unsafe_allow_html=True)
                         with c3:
-                            b = st.selectbox("p2", opts_all, index=opts_all.index(st.session_state[k_b]) if st.session_state[k_b] in opts_all else 0, key=k_b, label_visibility="collapsed")
+                            cur_a = st.session_state.get(k_a, "선택")
+                            cur_b = st.session_state.get(k_b, "선택")
+                            _opts_b, _idx_b = _opts_excluding_same_match(cur_b, [cur_a])
+                            b = st.selectbox("p2", _opts_b, index=_idx_b, key=k_b, label_visibility="collapsed")
 
                         new_t1 = [a] if a != "선택" else t1
                         new_t2 = [b] if b != "선택" else t2
 
                         if not _validate_no_duplicate_in_match(gt, new_t1, new_t2):
-                            st.error("❌ 같은 경기에 같은 선수가 중복됐어. 다른 사람으로 바꿔줘.")
+                            st.error("❌ 같은 경기에서 같은 선수가 중복되었습니다. 다른 선수로 변경해 주세요.")
                         edited.append((gt, new_t1, new_t2, court))
 
                     else:
@@ -6639,21 +6657,41 @@ def render_tab_today_session(tab):
                         col1, col2, colVS, col3, col4 = st.columns([2.6, 2.6, 0.9, 2.6, 2.6], vertical_alignment="center")
 
                         with col1:
-                            p1 = st.selectbox("t1a", opts_all, index=opts_all.index(st.session_state[keys[0]]) if st.session_state[keys[0]] in opts_all else 0, key=keys[0], label_visibility="collapsed")
+                            cur1 = st.session_state.get(keys[0], "선택")
+                            cur2 = st.session_state.get(keys[1], "선택")
+                            cur3 = st.session_state.get(keys[2], "선택")
+                            cur4 = st.session_state.get(keys[3], "선택")
+                            _opts1, _idx1 = _opts_excluding_same_match(cur1, [cur2, cur3, cur4])
+                            p1 = st.selectbox("t1a", _opts1, index=_idx1, key=keys[0], label_visibility="collapsed")
                         with col2:
-                            p2 = st.selectbox("t1b", opts_all, index=opts_all.index(st.session_state[keys[1]]) if st.session_state[keys[1]] in opts_all else 0, key=keys[1], label_visibility="collapsed")
+                            cur1 = st.session_state.get(keys[0], "선택")
+                            cur2 = st.session_state.get(keys[1], "선택")
+                            cur3 = st.session_state.get(keys[2], "선택")
+                            cur4 = st.session_state.get(keys[3], "선택")
+                            _opts2, _idx2 = _opts_excluding_same_match(cur2, [cur1, cur3, cur4])
+                            p2 = st.selectbox("t1b", _opts2, index=_idx2, key=keys[1], label_visibility="collapsed")
                         with colVS:
                             st.markdown("<div style='text-align:center; font-weight:900;'>VS</div>", unsafe_allow_html=True)
                         with col3:
-                            p3 = st.selectbox("t2a", opts_all, index=opts_all.index(st.session_state[keys[2]]) if st.session_state[keys[2]] in opts_all else 0, key=keys[2], label_visibility="collapsed")
+                            cur1 = st.session_state.get(keys[0], "선택")
+                            cur2 = st.session_state.get(keys[1], "선택")
+                            cur3 = st.session_state.get(keys[2], "선택")
+                            cur4 = st.session_state.get(keys[3], "선택")
+                            _opts3, _idx3 = _opts_excluding_same_match(cur3, [cur1, cur2, cur4])
+                            p3 = st.selectbox("t2a", _opts3, index=_idx3, key=keys[2], label_visibility="collapsed")
                         with col4:
-                            p4 = st.selectbox("t2b", opts_all, index=opts_all.index(st.session_state[keys[3]]) if st.session_state[keys[3]] in opts_all else 0, key=keys[3], label_visibility="collapsed")
+                            cur1 = st.session_state.get(keys[0], "선택")
+                            cur2 = st.session_state.get(keys[1], "선택")
+                            cur3 = st.session_state.get(keys[2], "선택")
+                            cur4 = st.session_state.get(keys[3], "선택")
+                            _opts4, _idx4 = _opts_excluding_same_match(cur4, [cur1, cur2, cur3])
+                            p4 = st.selectbox("t2b", _opts4, index=_idx4, key=keys[3], label_visibility="collapsed")
 
                         new_t1 = [p1, p2] if ("선택" not in (p1, p2)) else t1
                         new_t2 = [p3, p4] if ("선택" not in (p3, p4)) else t2
 
                         if not _validate_no_duplicate_in_match(gt, new_t1, new_t2):
-                            st.error("❌ 같은 경기에 같은 선수가 중복됐어. 다른 사람으로 바꿔줘.")
+                            st.error("❌ 같은 경기에서 같은 선수가 중복되었습니다. 다른 선수로 변경해 주세요.")
 
                         edited.append((gt, new_t1, new_t2, court))
 
@@ -6664,7 +6702,7 @@ def render_tab_today_session(tab):
                 apply_edit = st.button("✅ 수정 적용하기", use_container_width=True, key="apply_edit_btn")
                 st.markdown("</div>", unsafe_allow_html=True)
             with apply_col2:
-                st.caption("수정 적용을 누르면 미리보기/저장에 반영돼.")
+                st.caption("“수정 적용하기”를 누르면 미리보기/저장에 반영됩니다.")
 
             if apply_edit:
                 # 전체 스케줄에서 경기 단위 중복 검사(경기 안만)
@@ -6675,10 +6713,10 @@ def render_tab_today_session(tab):
                         break
 
                 if not ok:
-                    st.error("수정한 경기 중 중복 선수가 있어. 에러 난 경기부터 고쳐줘.")
+                    st.error("수정한 경기 중 중복 선수가 있습니다. 오류가 표시된 경기부터 수정해 주세요.")
                 else:
                     st.session_state["today_schedule"] = edited
-                    st.success("수정 내용이 반영됐어!")
+                    st.success("수정 내용이 반영되었습니다!")
                     st.session_state["edit_mode"] = False
                     safe_rerun()
 
