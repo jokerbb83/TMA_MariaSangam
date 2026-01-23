@@ -7418,164 +7418,150 @@ with tab3:
                     # =========================================================
                     
                                         # =========================================================
-                    # ✅ [개인별 보기] 이미지 저장 (JPEG) - ✅ 서버사이드(전체 행 포함)
-                    #   - 브라우저 캡처(html2canvas)는 st.dataframe 가상렌더/스크롤 때문에 빈 화면/누락 발생
-                    #   - DataFrame을 matplotlib로 직접 이미지(JPEG) 생성 → 다운로드
+                    # =========================================================
+                    # ✅ [개인별 보기] 이미지 저장 (JPEG) - ✅ 전체 행 포함 (브라우저 캡처)
+                    #   - st.dataframe은 가상 렌더(스크롤)이라 캡처가 비거나 누락될 수 있습니다.
+                    #   - 동일 데이터를 '정적 HTML 테이블(전체 행)'로 숨김 렌더한 뒤 html2canvas로 캡처합니다.
+                    #   - matplotlib 불필요
                     # =========================================================
 
-                    def _df_to_jpeg_bytes(_df: pd.DataFrame, _title: str) -> bytes:
-                        df_img = _df.copy()
-                        df_img.insert(0, "", df_img.index.astype(str))
+                    def _build_personal_score_df(per_dict: dict) -> pd.DataFrame:
+                        players_sorted = sorted(per_dict.keys())
+                        rows = []
+                        for no, name in enumerate(players_sorted, start=1):
+                            games_list = per_dict[name]
+                            rows.append({
+                                '번호': no,
+                                '이름': name,
+                                '1게임': games_list[0] if len(games_list) >= 1 else '',
+                                '2게임': games_list[1] if len(games_list) >= 2 else '',
+                                '3게임': games_list[2] if len(games_list) >= 3 else '',
+                                '4게임': games_list[3] if len(games_list) >= 4 else '',
+                            })
+                        df = pd.DataFrame(rows).set_index('번호')
+                        df.index.name = ''
+                        df.index.name = None
+                        df.columns.name = None
+                        game_cols = ['1게임', '2게임', '3게임', '4게임']
+                        def _calc_wdl(row):
+                            w = d = l = 0
+                            for v in row:
+                                if not isinstance(v, str):
+                                    continue
+                                s = v.replace(' ', '')
+                                if ':' not in s:
+                                    continue
+                                a, b = s.split(':', 1)
+                                try:
+                                    a = int(a); b = int(b)
+                                except Exception:
+                                    continue
+                                if a > b: w += 1
+                                elif a == b: d += 1
+                                else: l += 1
+                            return pd.Series([w, d, l], index=['승','무','패'])
+                        df[['승','무','패']] = df[game_cols].apply(_calc_wdl, axis=1)
+                        df = df[['이름','승','무','패'] + game_cols]
+                        return df
 
-                        nrows, ncols = df_img.shape
-                        fig_w = max(8.5, ncols * 1.1)
-                        fig_h = max(2.5, (nrows + 2) * 0.36)
+                    def _personal_df_to_html(df: pd.DataFrame, title: str) -> str:
+                        cols = list(df.columns)
+                        html = []
+                        html.append("<div style='font-size:28px;font-weight:900;margin:0 0 14px 0;'>" + str(title) + "</div>")
+                        html.append("<table style='border-collapse:collapse; width:100%; font-size:16px;'>")
+                        html.append("<thead><tr>")
+                        html.append("<th style='border:1px solid #e5e7eb; background:#f9fafb; padding:10px 12px; text-align:center;'></th>")
+                        for c in cols:
+                            html.append("<th style='border:1px solid #e5e7eb; background:#f9fafb; padding:10px 12px; text-align:center; font-weight:800; color:#374151;'>" + str(c) + "</th>")
+                        html.append("</tr></thead>")
+                        html.append("<tbody>")
+                        for idx, row in df.iterrows():
+                            html.append("<tr>")
+                            html.append("<td style='border:1px solid #e5e7eb; padding:10px 12px; text-align:center; color:#6b7280;'>" + str(idx) + "</td>")
+                            for c in cols:
+                                v = row[c]
+                                style = "border:1px solid #e5e7eb; padding:10px 12px; text-align:center;"
+                                if c == '이름':
+                                    nm = str(v)
+                                    info = roster_by_name.get(nm, {}) or {}
+                                    g = info.get('gender')
+                                    bg = '#f3f4f6'
+                                    if g == '남': bg = '#dbeafe'
+                                    elif g == '여': bg = '#fee2e2'
+                                    style += ' background:' + bg + '; font-weight:800;'
+                                if re.match(r'^[1-9]\\d*게임$', str(c)):
+                                    s = str(v).replace(' ', '')
+                                    if ':' in s:
+                                        try:
+                                            a, b = s.split(':', 1)
+                                            a = int(a); b = int(b)
+                                            if a > b: style += ' background:#fef9c3;'
+                                            elif a < b: style += ' background:#e5e7eb;'
+                                        except Exception:
+                                            pass
+                                html.append("<td style='" + style + "'>" + str(v) + "</td>")
+                            html.append("</tr>")
+                        html.append("</tbody></table>")
+                        return ''.join(html)
 
-                        fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=160)
-                        ax.axis("off")
+                    capture_personal_tables = []
+                    if view_mode_scores == '조별 보기 (A/B조)':
+                        if per_player_A: capture_personal_tables.append(('A조 개인별 스코어', _build_personal_score_df(per_player_A)))
+                        if per_player_B: capture_personal_tables.append(('B조 개인별 스코어', _build_personal_score_df(per_player_B)))
+                        if per_player_other: capture_personal_tables.append(('조가 섞인 경기 / 기타 개인별 스코어', _build_personal_score_df(per_player_other)))
+                    else:
+                        if per_player_all: capture_personal_tables.append(('전체 개인별 스코어', _build_personal_score_df(per_player_all)))
 
-                        ax.text(
-                            0.0, 1.02, str(_title),
-                            transform=ax.transAxes,
-                            fontsize=18,
-                            fontweight="bold",
-                            va="bottom",
-                            ha="left",
-                            color="#111827"
-                        )
+                    capture_img_id = f"{capture_id_p}__img"
+                    safe_name = '개인별표_' + str(sel_date).replace('/', '_').replace(' ', '_') + '.jpg'
+                    if capture_personal_tables:
+                        _tables_html = ''.join([_personal_df_to_html(df, title) + "<div style='height:26px;'></div>" for (title, df) in capture_personal_tables])
+                        st.markdown("<div id='" + capture_img_id + "__body' style='position:fixed; left:-99999px; top:0; background:#ffffff; padding:24px; width:1200px;'>" + _tables_html + "</div>", unsafe_allow_html=True)
 
-                        tbl = ax.table(
-                            cellText=df_img.values,
-                            colLabels=df_img.columns,
-                            cellLoc="center",
-                            colLoc="center",
-                            loc="upper left",
-                        )
-
-                        tbl.auto_set_font_size(False)
-                        tbl.set_fontsize(10)
-                        tbl.scale(1.0, 1.35)
-
-                        header_bg = "#f9fafb"
-                        grid = "#e5e7eb"
-                        win_bg = "#fef9c3"
-                        lose_bg = "#e5e7eb"
-                        male_bg = "#dbeafe"
-                        female_bg = "#fee2e2"
-                        neutral_bg = "#f3f4f6"
-                        white_bg = "#ffffff"
-
-                        cols = list(df_img.columns)
-                        col_idx = {c: i for i, c in enumerate(cols)}
-                        name_col = col_idx.get("이름", None)
-                        game_cols = [c for c in cols if re.match(r"^[1-9]\d*게임$", str(c))]
-
-                        def _parse_score(v):
-                            if not isinstance(v, str):
-                                return None
-                            s = v.replace(" ", "")
-                            if ":" not in s:
-                                return None
-                            a, b = s.split(":", 1)
-                            try:
-                                return int(a), int(b)
-                            except Exception:
-                                return None
-
-                        for (r, c), cell in tbl.get_celld().items():
-                            cell.set_edgecolor(grid)
-                            cell.set_linewidth(0.6)
-
-                            if r == 0:
-                                cell.set_facecolor(header_bg)
-                                cell.get_text().set_fontweight("bold")
-                                cell.get_text().set_color("#374151")
-                                continue
-
-                            cell.set_facecolor(white_bg)
-                            col_name = cols[c] if c < len(cols) else ""
-
-                            if (name_col is not None) and (c == name_col):
-                                nm = str(df_img.iloc[r - 1, c])
-                                info = roster_by_name.get(nm, {}) or {}
-                                g = info.get("gender")
-                                if g == "남":
-                                    cell.set_facecolor(male_bg)
-                                elif g == "여":
-                                    cell.set_facecolor(female_bg)
-                                else:
-                                    cell.set_facecolor(neutral_bg)
-                                cell.get_text().set_fontweight("bold")
-                                cell.get_text().set_color("#111827")
-
-                            if col_name in game_cols:
-                                val = df_img.iloc[r - 1, c]
-                                parsed = _parse_score(val)
-                                if parsed is not None:
-                                    a, b = parsed
-                                    if a > b:
-                                        cell.set_facecolor(win_bg)
-                                    elif a < b:
-                                        cell.set_facecolor(lose_bg)
-
-                        fig.tight_layout(pad=0.6)
-                        buf = io.BytesIO()
-                        fig.savefig(buf, format="jpeg", dpi=160, bbox_inches="tight")
-                        plt.close(fig)
-                        buf.seek(0)
-                        return buf.read()
-
-                    def _concat_jpegs_vert(jpeg_bytes_list: list[bytes], pad: int = 28) -> bytes:
-                        imgs = [Image.open(io.BytesIO(b)).convert("RGB") for b in jpeg_bytes_list if b]
-                        if not imgs:
-                            return b""
-                        w = max(im.width for im in imgs)
-                        total_h = sum(im.height for im in imgs) + pad * (len(imgs) - 1)
-                        canvas = Image.new("RGB", (w, total_h), (255, 255, 255))
-                        y = 0
-                        for im in imgs:
-                            x = (w - im.width) // 2
-                            canvas.paste(im, (x, y))
-                            y += im.height + pad
-                        out = io.BytesIO()
-                        canvas.save(out, format="JPEG", quality=95)
-                        out.seek(0)
-                        return out.read()
-
-                    col_save, col_msg = st.columns([4, 1])
-                    with col_save:
-                        make_jpeg = st.button("개인별 표 이미지 저장 (JPEG)", use_container_width=True, key=f"{capture_id_p}_makejpeg")
-                    with col_msg:
-                        _msg = st.empty()
-
-                    if make_jpeg:
-                        try:
-                            if not capture_personal_tables:
-                                _msg.warning("표 없음")
-                            else:
-                                jpegs = [_df_to_jpeg_bytes(df, title) for (title, df) in capture_personal_tables]
-                                merged = _concat_jpegs_vert(jpegs, pad=28)
-                                st.session_state[f"{capture_id_p}__jpeg_bytes"] = merged
-                                _msg.success("완료")
-                        except Exception as e:
-                            st.session_state.pop(f"{capture_id_p}__jpeg_bytes", None)
-                            _msg.error("실패")
-                            st.error(f"이미지 생성 실패: {e}")
-
-                    jpeg_bytes = st.session_state.get(f"{capture_id_p}__jpeg_bytes", b"")
-                    if jpeg_bytes:
-                        fname = "개인별표_" + str(sel_date).replace("/", "_").replace(" ", "_") + ".jpg"
-                        st.download_button(
-                            "다운로드 (JPEG)",
-                            data=jpeg_bytes,
-                            file_name=fname,
-                            mime="image/jpeg",
-                            use_container_width=True,
-                            key=f"{capture_id_p}_downloadjpeg",
-                        )
-
-                    # =========================================================
-
+                    _cap_html = """
+                    <div style=\"display:flex; gap:12px; margin-top:14px; align-items:center;\">
+                      <button id=\"__CAPID____save\" style=\"flex:1; padding:14px 12px; border-radius:14px; border:1px solid rgba(0,0,0,0.12); background:#5ad1b3; color:white; cursor:pointer; font-weight:900;\">개인별 표 이미지 저장 (JPEG)</button>
+                      <span id=\"__CAPID____msg\" style=\"font-size:13px; opacity:0.75;\"></span>
+                    </div>
+                    <script>
+                    (function(){
+                      const capId = "__CAPID__";
+                      const fileName = "__FILENAME__";
+                      const btn = document.getElementById(capId + "__save");
+                      const msg = document.getElementById(capId + "__msg");
+                      const setMsg = (m) => { if(msg) msg.textContent = m; };
+                      function ensureHtml2Canvas(){
+                        return new Promise((resolve,reject)=>{
+                          const p = window.parent;
+                          if(p && p.html2canvas) return resolve(p.html2canvas);
+                          const ps = p.document.createElement('script');
+                          ps.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+                          ps.onload = ()=> resolve(p.html2canvas);
+                          ps.onerror = reject;
+                          p.document.head.appendChild(ps);
+                        });
+                      }
+                      async function run(){
+                        try{
+                          setMsg('이미지 생성중…');
+                          const pdoc = window.parent.document;
+                          const body = pdoc.getElementById(capId + "__body");
+                          if(!body){ setMsg('표가 없습니다.'); return; }
+                          const h2c = await ensureHtml2Canvas();
+                          const canvas = await h2c(body, {backgroundColor:'#ffffff', scale:2});
+                          const url = canvas.toDataURL('image/jpeg', 0.95);
+                          const a = pdoc.createElement('a');
+                          a.href = url; a.download = fileName || 'table.jpg';
+                          pdoc.body.appendChild(a); a.click(); a.remove();
+                          setMsg('JPEG 저장 완료!');
+                        }catch(e){ console.error(e); setMsg('실패'); }
+                      }
+                      if(btn) btn.onclick = run;
+                    })();
+                    </script>
+                    """
+                    _cap_html = _cap_html.replace("__CAPID__", capture_img_id).replace("__FILENAME__", safe_name)
+                    components.html(_cap_html, height=90)
         # 2. 날짜별 요약 리포트 (선택 날짜 기준)
         #   - ✅ 스코어보드/옵저버(읽기 전용) 화면에서만 여기(요약표 아래) 표시
         #   - ✅ 관리자 모드에서는 아래 '전체 경기 스코어' 섹션 하단에서 1번만 표시
@@ -10102,8 +10088,6 @@ with tab5:
 # ✅ 모든 탭 공통 푸터
 # =========================================================
 render_footer()
-
-
 
 
 
