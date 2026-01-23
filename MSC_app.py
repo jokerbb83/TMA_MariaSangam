@@ -7695,27 +7695,29 @@ with tab3:
 
                 def render_score_inputs_block(title, game_list):
                     """title: 'A조 경기 스코어', 'B조 경기 스코어' 등
-                       if not game_list:
-                           return
-                       # ✅ 게임 헤더에 '이름,이름 VS 이름,이름' 컬러칩 표시(좌측 정렬)
-                       def _msc_chip(name: str) -> str:
-                           info = roster_by_name.get(name, {}) or {}
-                           g = info.get("gender")
-                           cls = "msc-chip-m" if g == "남" else "msc-chip-f" if g == "여" else "msc-chip-u"
-                           return f"<span class='msc-chip {cls}'>{_html.escape(str(name))}</span>"
+                    game_list: [(idx, gtype, t1, t2, court), ...]
+                    """
+                    if not game_list:
+                        return
 
-                       def _msc_team_chips(team) -> str:
-                           team = list(team) if team is not None else []
-                           parts = []
-                           for i, nm in enumerate(team):
-                               parts.append(_msc_chip(str(nm)))
-                               if i < len(team) - 1:
-                                   parts.append("<span style='font-weight:900; color:#6b7280; margin:0 2px;'>,</span>")
-                           return "".join(parts)
+                    # ✅ 게임 헤더에 '이름,이름 VS 이름,이름' 컬러칩 표시(좌측 정렬)
+                    def _msc_chip(name: str) -> str:
+                        info = roster_by_name.get(name, {}) or {}
+                        g = info.get("gender")
+                        cls = "msc-chip-m" if g == "남" else "msc-chip-f" if g == "여" else "msc-chip-u"
+                        return f"<span class='msc-chip {cls}'>{_html.escape(str(name))}</span>"
 
-                       def _msc_match_chips(t1, t2) -> str:
-                           return _msc_team_chips(t1) + "<span class='msc-vs'>VS</span>" + _msc_team_chips(t2)
-                       game_list: [(idx, gtype, t1, t2, court), ...]"""
+                    def _msc_team_chips(team) -> str:
+                        team = list(team) if team is not None else []
+                        parts = []
+                        for i, nm in enumerate(team):
+                            parts.append(_msc_chip(str(nm)))
+                            if i < len(team) - 1:
+                                parts.append("<span style='font-weight:900; color:#6b7280; margin:0 2px;'>,</span>")
+                        return "".join(parts)
+
+                    def _msc_match_chips(t1, t2) -> str:
+                        return _msc_team_chips(t1) + "<span class='msc-vs'>VS</span>" + _msc_team_chips(t2)
                     if not game_list:
                         return
 
