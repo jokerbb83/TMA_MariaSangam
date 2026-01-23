@@ -6340,6 +6340,7 @@ def render_tab_today_session(tab):
 
                 st.markdown("<div style='height:0.6rem;'></div>", unsafe_allow_html=True)
 
+            st.markdown("---")
             # -------------------------
             # 수동 대진 리스트 만들기 (실제 위젯 값 기준)
             # -------------------------
@@ -6825,6 +6826,7 @@ def render_tab_today_session(tab):
                     "court_type": st.session_state.get("today_court_type", COURT_TYPES[0]),
                     "special_match": bool(st.session_state.get("special_match", False)),
                     "groups_snapshot": groups_snapshot,
+                    "schedule_view_mode": view_mode_for_schedule,
                 })
 
                 sessions[save_date_str] = day_data
@@ -9839,7 +9841,22 @@ with tab5:
                         else:
                             rows_other.append(row)
 
-                    if rank_view_mode == "조별 보기 (A/B조)":
+                                        # ✅ 그날 대진표 생성 방식(전체/조별)에 따라 요약 표를 자동 분기
+                    _day_data = sessions.get(d, {}) or {}
+                    _day_mode = _day_data.get("schedule_view_mode")
+                    _show_grouped = (_day_mode == "조별 분리 (A/B조)")
+
+                    # (이전 데이터 호환) schedule_view_mode가 없으면, 그날 모든 게임이 A/B로만 구분되고 둘 다 존재할 때 조별로 간주
+                    if not _show_grouped:
+                        _snap = _day_data.get("groups_snapshot") or {}
+                        _flags = []
+                        for _r in rows_all:
+                            _flags.append(classify_game_group(_r["t1"] + _r["t2"], roster_by_name, _snap))
+                        _uniq = set(_flags)
+                        if _uniq.issubset({"A", "B"}) and ("A" in _uniq) and ("B" in _uniq):
+                            _show_grouped = True
+
+                    if _show_grouped:
                         if rows_A:
                             st.markdown("#### 🟥 A조 경기 요약")
                             render_score_summary_table(rows_A, roster_by_name)
