@@ -6277,7 +6277,7 @@ def render_tab_today_session(tab):
                 if plan_all:
                     _apply_plan_to_state(plan_all, auto_all)
                 else:
-                    st.info("이미 채울 빈칸이 없어.")
+                    st.info("이미 채울 빈칸이 없습니다.")
 
             # ✅ 게임 UI (라운드 구분 없이 나열 + 체크된 게임만 처리)
             # -------------------------
@@ -6351,6 +6351,29 @@ def render_tab_today_session(tab):
                 for rr, cc in selected_games:
                     by_round.setdefault(int(rr), []).append(int(cc))
 
+                # ✅ 체크된 게임에 '빈칸'이 하나도 없으면(=모두 채워짐)
+                #    버튼을 계속 눌렀을 때도 새 랜덤 배치가 나오도록
+                #    선택된 게임만 한 번 초기화(선택) 후 다시 채웁니다.
+                def _keys_for_game(_rr: int, _cc: int):
+                    _npos = 4 if gtype == "복식" else 2
+                    return [_manual_key(int(_rr), int(_cc), _p, gtype) for _p in range(1, _npos + 1)]
+
+                def _selected_has_fillable() -> bool:
+                    for (_rr, _cc) in selected_games:
+                        for _k in _keys_for_game(_rr, _cc):
+                            _v = st.session_state.get(_k, "선택")
+                            if (_v == "선택") or bool(st.session_state.get(f"_auto_{_k}", False)):
+                                return True
+                    return False
+
+                if not _selected_has_fillable():
+                    for (_rr, _cc) in selected_games:
+                        for _k in _keys_for_game(_rr, _cc):
+                            st.session_state[_k] = "선택"
+                            st.session_state.pop(f"_prev_{_k}", None)
+                            st.session_state[f"_auto_{_k}"] = False
+
+
                 # ✅ 선택된 게임 조합도 컨텍스트에 포함 (전체선택/해제 후 다른 케이스와 섞이지 않게)
                 _sg_sig = ";".join([f"{int(rr)}-{int(cc)}" for rr, cc in sorted(selected_games)])
                 ctx_key = _manual_fill_context_key("CHECKED", gm, _sg_sig)
@@ -6407,7 +6430,7 @@ def render_tab_today_session(tab):
                 if plan_all:
                     _apply_plan_to_state(plan_all, auto_all)
                 else:
-                    st.info("체크된 게임에서 채울 빈칸이 없어.")
+                    st.info("선택하신 게임을 새로 배정할 수 없습니다. (인원이 부족하거나 조건 제한이 있을 수 있습니다.)")
 
             st.markdown("<div style='height:0.4rem;'></div>", unsafe_allow_html=True)
 
