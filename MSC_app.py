@@ -398,7 +398,9 @@ components.html(
         '빈칸 자동 채우기(전체 라운드)',
         '전체 초기화(수동 입력)',
         '체크된 게임만 빈칸 채우기',
-        '체크된 게임만 초기화'
+        '체크된 게임만 초기화',
+        '전체선택',
+        '전체해제'
       ];
 
       const buttons = Array.from(doc.querySelectorAll('button'));
@@ -412,6 +414,7 @@ components.html(
       // 첫 버튼이 속한 row에만 클래스 추가하면 2개 버튼이 같이 고정됨
       markRow(findBtn(btnTexts[0]));
       markRow(findBtn(btnTexts[2]));
+      markRow(findBtn(btnTexts[4]));
     } catch (e) {}
 
   }
@@ -6298,6 +6301,42 @@ def render_tab_today_session(tab):
                     st.info("체크된 게임에서 채울 빈칸이 없어.")
 
             st.markdown("<div style='height:0.4rem;'></div>", unsafe_allow_html=True)
+
+            # ✅ 전체 선택/해제 버튼 (체크박스)
+            s1, s2 = st.columns(2)
+            with s1:
+                st.markdown('<div class="main-primary-btn">', unsafe_allow_html=True)
+                select_all_clicked = st.button(
+                    "전체선택",
+                    use_container_width=True,
+                    key="btn_select_all_games",
+                    disabled=(len(games) == 0),
+                )
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            with s2:
+                st.markdown('<div class="main-secondary-btn">', unsafe_allow_html=True)
+                deselect_all_clicked = st.button(
+                    "전체해제",
+                    use_container_width=True,
+                    key="btn_deselect_all_games",
+                    disabled=(len(games) == 0),
+                )
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            if select_all_clicked:
+                for (gno, _rr, _cc) in games:
+                    st.session_state[f"chk_game_{gno}"] = True
+
+            if deselect_all_clicked:
+                for (gno, _rr, _cc) in games:
+                    st.session_state[f"chk_game_{gno}"] = False
+
+            if select_all_clicked or deselect_all_clicked:
+                safe_rerun()
+
+            st.markdown("<div style='height:0.35rem;'></div>", unsafe_allow_html=True)
+
 
             # -------------------------
             # ✅ 게임 나열 렌더
