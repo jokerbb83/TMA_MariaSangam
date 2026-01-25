@@ -6156,7 +6156,53 @@ def render_tab_today_session(tab):
                         else:
                             if f"_auto_{k}" not in st.session_state:
                                 st.session_state[f"_auto_{k}"] = False
-            # -------------------------
+                        # =========================================================
+            # [수동 자동채우기] 결과 순환(경우의 수 소진 시 자동 초기화)
+            #   - 같은 조건에서 버튼을 반복 클릭할 때 "이미 나왔던 배치"는 최대한 피함
+            #   - 모든 배치를 한 번씩 다 본 것 같으면(seen 소진) seen을 비우고 다시 랜덤 재시작
+            #   - global random.seed 영향 없이 os.urandom 기반 seed 사용
+            # =========================================================
+            def _manual_fill_context_key(mode: str, gm: str, selected_games_sig: str = "") -> str:
+                try:
+                    _ps = tuple(sorted(players_selected))
+                except Exception:
+                    _ps = tuple(players_selected) if isinstance(players_selected, (list, tuple)) else (str(players_selected),)
+                _sg = selected_games_sig or ""
+                _sg_sub = (manual_samegender_submode if gm == "동성" else "")
+                return (
+                    f"{mode}|{gtype}|{int(court_count)}|{int(total_rounds)}|"
+                    f"{view_mode_for_schedule}|{gm}|{int(bool(manual_fill_ntrp))}|"
+                    f"{_sg_sub}|{','.join(_ps)}|{_sg}"
+                )
+
+            def _manual_fill_signature(plan_override: dict | None = None) -> str:
+                plan_override = plan_override or {}
+                vals = []
+                for rr in range(1, int(total_rounds) + 1):
+                    for cc in range(1, int(court_count) + 1):
+                        poses = (1, 2) if gtype == "단식" else (1, 2, 3, 4)
+                        for pos in poses:
+                            k = _manual_key(rr, cc, pos, gtype)
+                            v = plan_override.get(k, None)
+                            if v is None:
+                                v = _get_manual_value(k)
+                            vals.append(v if (v and v != "") else "선택")
+                return "|".join(vals)
+
+            def _manual_seen_bucket(ctx_key: str):
+                if "_manual_fill_seen_map" not in st.session_state or not isinstance(st.session_state.get("_manual_fill_seen_map"), dict):
+                    st.session_state["_manual_fill_seen_map"] = {}
+                m = st.session_state["_manual_fill_seen_map"]
+                s = m.get(ctx_key)
+                if not isinstance(s, set):
+                    s = set()
+                    m[ctx_key] = s
+                # 너무 커지면 메모리 방지 차원에서 리셋
+                if len(s) > 4000:
+                    s.clear()
+                return s
+
+# -------------------------
             # 전체 초기화
             # -------------------------
             if clear_all_clicked:
@@ -6175,26 +6221,58 @@ def render_tab_today_session(tab):
             if fill_all_clicked and players_selected:
                 gm = _manual_gender_to_mode(manual_gender_mode)
 
-                # ✅ 버튼 누를 때마다 결과가 달라지게
-                seed_base = int(random.random() * 1_000_000_000)
-                st.session_state["_manual_fill_seed"] = seed_base
+                ctx_key = _manual_fill_context_key("ALL", gm)
+                seen = _manual_seen_bucket(ctx_key)
+
+                def _gen_plan_all(_seed_base: int):
+                    plan_all = {}
+                    auto_all = set()
+                    for rr in range(1, int(total_rounds) + 1):
+                        plan_r, auto_r = _fill_round_plan(
+                            r=rr,
+                            players_selected=players_selected,
+                            court_count=court_count,
+                            gtype=gtype,
+                            view_mode=view_mode_for_schedule,
+                            gender_mode=gm,
+                            ntrp_on=bool(manual_fill_ntrp),
+                            seed_base=_seed_base,
+                            same_gender_submode=("동성복식" if gm == "동성" else None),
+                        )
+                        plan_all.update(plan_r)
+                        auto_all |= set(auto_r or [])
+                    return plan_all, auto_all
 
                 plan_all = {}
                 auto_all = set()
-                for rr in range(1, int(total_rounds) + 1):
-                    plan_r, auto_r = _fill_round_plan(
-                        r=rr,
-                        players_selected=players_selected,
-                        court_count=court_count,
-                        gtype=gtype,
-                        view_mode=view_mode_for_schedule,
-                        gender_mode=gm,
-                        ntrp_on=bool(manual_fill_ntrp),
-                        seed_base=seed_base,
-                        same_gender_submode=("동성복식" if gm == "동성" else None),
-                    )
-                    plan_all.update(plan_r)
-                    auto_all |= set(auto_r or [])
+                chosen_sig = None
+
+                # ✅ 경우의 수(=이미 본 배치) 소진 전까지는 새로운 배치를 최대한 보여주기
+                for _attempt in range(60):
+                    seed_base = int.from_bytes(os.urandom(8), "big")
+                    st.session_state["_manual_fill_seed"] = seed_base
+
+                    _p, _a = _gen_plan_all(seed_base)
+
+                    # 변경이 없으면(채울게 없음) 더 돌려봐야 의미 없음
+                    if not _p:
+                        plan_all, auto_all = _p, _a
+                        break
+
+                    sig = _manual_fill_signature(_p)
+                    if sig not in seen:
+                        plan_all, auto_all = _p, _a
+                        chosen_sig = sig
+                        seen.add(sig)
+                        break
+
+                # ✅ 다 돌렸는데도 새 배치를 못 찾았으면 → seen 초기화 후 다시 시작
+                if chosen_sig is None and plan_all:
+                    seen.clear()
+                    seed_base = int.from_bytes(os.urandom(8), "big")
+                    st.session_state["_manual_fill_seed"] = seed_base
+                    plan_all, auto_all = _gen_plan_all(seed_base)
+                    seen.add(_manual_fill_signature(plan_all))
 
                 if plan_all:
                     _apply_plan_to_state(plan_all, auto_all)
@@ -6268,32 +6346,63 @@ def render_tab_today_session(tab):
             if fill_checked_clicked and players_selected and selected_games:
                 gm = _manual_gender_to_mode(manual_gender_mode)
 
-                # ✅ 버튼 누를 때마다 결과가 달라지게
-                seed_base = int(random.random() * 1_000_000_000)
-                st.session_state["_manual_fill_seed"] = seed_base
-
                 # 라운드별로 묶어서, 체크된 코트만 채우기 (라운드 내 중복 방지 유지)
                 by_round = {}
                 for rr, cc in selected_games:
                     by_round.setdefault(int(rr), []).append(int(cc))
 
+                # ✅ 선택된 게임 조합도 컨텍스트에 포함 (전체선택/해제 후 다른 케이스와 섞이지 않게)
+                _sg_sig = ";".join([f"{int(rr)}-{int(cc)}" for rr, cc in sorted(selected_games)])
+                ctx_key = _manual_fill_context_key("CHECKED", gm, _sg_sig)
+                seen = _manual_seen_bucket(ctx_key)
+
+                def _gen_plan_checked(_seed_base: int):
+                    plan_all = {}
+                    auto_all = set()
+                    for rr, c_list in by_round.items():
+                        plan_r, auto_r = _fill_round_plan(
+                            r=int(rr),
+                            players_selected=players_selected,
+                            court_count=court_count,
+                            gtype=gtype,
+                            view_mode=view_mode_for_schedule,
+                            gender_mode=gm,
+                            ntrp_on=bool(manual_fill_ntrp),
+                            target_courts=c_list,
+                            seed_base=_seed_base,
+                            same_gender_submode=(manual_samegender_submode if gm == "동성" else None),
+                        )
+                        plan_all.update(plan_r)
+                        auto_all |= set(auto_r or [])
+                    return plan_all, auto_all
+
                 plan_all = {}
                 auto_all = set()
-                for rr, c_list in by_round.items():
-                    plan_r, auto_r = _fill_round_plan(
-                        r=int(rr),
-                        players_selected=players_selected,
-                        court_count=court_count,
-                        gtype=gtype,
-                        view_mode=view_mode_for_schedule,
-                        gender_mode=gm,
-                        ntrp_on=bool(manual_fill_ntrp),
-                        target_courts=c_list,
-                        seed_base=seed_base,
-                        same_gender_submode=(manual_samegender_submode if gm == "동성" else None),
-                    )
-                    plan_all.update(plan_r)
-                    auto_all |= set(auto_r or [])
+                chosen_sig = None
+
+                for _attempt in range(60):
+                    seed_base = int.from_bytes(os.urandom(8), "big")
+                    st.session_state["_manual_fill_seed"] = seed_base
+
+                    _p, _a = _gen_plan_checked(seed_base)
+
+                    if not _p:
+                        plan_all, auto_all = _p, _a
+                        break
+
+                    sig = _manual_fill_signature(_p)
+                    if sig not in seen:
+                        plan_all, auto_all = _p, _a
+                        chosen_sig = sig
+                        seen.add(sig)
+                        break
+
+                if chosen_sig is None and plan_all:
+                    seen.clear()
+                    seed_base = int.from_bytes(os.urandom(8), "big")
+                    st.session_state["_manual_fill_seed"] = seed_base
+                    plan_all, auto_all = _gen_plan_checked(seed_base)
+                    seen.add(_manual_fill_signature(plan_all))
 
                 if plan_all:
                     _apply_plan_to_state(plan_all, auto_all)
