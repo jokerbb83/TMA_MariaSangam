@@ -6361,7 +6361,7 @@ def render_tab_today_session(tab):
                     _vals = [st.session_state.get(k, '선택') for k in _ks]
                     _chips = _match_chips_html(_vals, gtype)
                     st.markdown(
-                        f"<div class='msc-gamehead'><div style='font-weight:900;'>게임 {gno} · 코트 {cc}</div><div class='msc-chip-wrap'>{_chips}</div></div>",
+                        f"<div class='msc-gamehead'><div style='font-weight:900;'>게임 {rr} · 코트 {cc}</div><div class='msc-chip-wrap'>{_chips}</div></div>",
                         unsafe_allow_html=True,
                     )
 
@@ -6377,7 +6377,14 @@ def render_tab_today_session(tab):
                     gtype=gtype,
                 )
 
-                st.markdown("<div style='height:0.6rem;'></div>", unsafe_allow_html=True)
+                # ✅ 라운드(게임) 경계선: 코트 수만큼 묶어서 구분
+                if int(cc) == int(court_count) and int(rr) < int(total_rounds):
+                    st.markdown(
+                        "<hr style='margin:0.35rem 0 0.8rem 0; border:none; border-top:1px solid #e5e7eb;'>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown("<div style='height:0.6rem;'></div>", unsafe_allow_html=True)
 
 
             # -------------------------
