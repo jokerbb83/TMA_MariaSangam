@@ -32,10 +32,10 @@ def CLUB_NAME() -> str:
     return "마리아상암포바"
 
 # ✅ 관리자(메인) 앱 타이틀
-ADMIN_PURPOSE = "관리 도우미(Beta)"  # 예: "도우미 (Beta)"
+ADMIN_PURPOSE = "관리 도우미"  # 예: "도우미 (Beta)"
 
 # ✅ 스코어보드(읽기전용) 앱 타이틀
-SCOREBOARD_PURPOSE = "스코어보드 (Beta)"
+SCOREBOARD_PURPOSE = "스코어보드"
 
 # ✅ 데이터 파일 prefix (예: "MSC" → MSC_players.json / MSC_sessions.json)
 DATA_FILE_PREFIX = "MSC"
@@ -10168,6 +10168,7 @@ with tab5:
 # ✅ 모든 탭 공통 푸터
 # =========================================================
 render_footer()
+
 
 
 
