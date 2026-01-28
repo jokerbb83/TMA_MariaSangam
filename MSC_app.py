@@ -11515,7 +11515,7 @@ with tab6:
     if (not IS_SCOREBOARD) and (not IS_OBSERVER) and cur_code:
         st.markdown("---")
         st.markdown("### 📣 스코어보드 링크")
-        sb_base = str(st.secrets.get("SCOREBOARD_URL", "") or os.getenv("TNNT_SCOREBOARD_URL", "")).strip()
+        sb_base = str(st.secrets.get("https://mariasangamviewer.streamlit.app/", "") or os.getenv("TNNT_SCOREBOARD_URL", "")).strip()
         qs = f"club={cur_code}"
         if sb_base:
             url = sb_base
