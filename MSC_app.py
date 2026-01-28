@@ -327,45 +327,24 @@ def _set_query_params_safely(**kwargs):
         pass
 
 def ensure_login_and_club():
-    """로그인(가능하면 구글/Streamlit 인증) + 기본 클럽코드(MSPC)를 준비한다.
+    """단일 클럽 고정(MSPC) 버전: 로그인/이메일 입력 UI 없이 클럽코드만 준비한다.
 
-    ✅ 이 MSC_app 버전은 멀티클럽(클럽코드 선택/변경) UI를 사용하지 않는다.
     - 항상 DEFAULT_CLUB_CODE(기본: MSPC)로 동작
     - URL ?club=... 도 무시(단일 클럽 고정)
     """
 
-    # 1) 이메일 확보(가능하면 Streamlit 인증)
-    auto_email = _get_user_email_from_streamlit()
-    if auto_email and not st.session_state.get("user_email"):
-        st.session_state["user_email"] = auto_email
-        st.rerun()
-
-    # 2) 단일 클럽 고정: 세션에 없으면 기본값으로 세팅
+    # 단일 클럽 고정: 세션에 없으면 기본값으로 세팅
     if not st.session_state.get("club_code"):
         st.session_state["club_code"] = _sanitize_club_code(DEFAULT_CLUB_CODE).upper() or "MSPC"
 
     active_code = _sanitize_club_code(st.session_state.get("club_code", "")).upper() or "MSPC"
 
-    # 3) Sidebar: 로그인 표시(인증이 없으면 임시 이메일 입력)
+    # Sidebar: 클럽 표시만(로그인 UI 제거)
     with st.sidebar:
-        st.markdown("### 🔐 로그인")
-        email = (st.session_state.get("user_email") or "").strip()
-        if email:
-            st.caption(f"로그인: **{email}**")
-        else:
-            st.info("구글 로그인이 연결되지 않은 환경입니다. (로컬/인증 미설정)\n임시로 이메일을 입력해 주세요.")
-            email_in = st.text_input("이메일(임시 로그인)", value="", placeholder="you@gmail.com", key="tmp_login_email")
-            if st.button("로그인", use_container_width=True):
-                email_in = (email_in or "").strip()
-                if not email_in:
-                    st.warning("이메일을 입력해 주세요.")
-                    st.stop()
-                st.session_state["user_email"] = email_in
-                st.rerun()
-
-        st.markdown("---")
+        st.markdown("### 🏷️ 클럽")
         st.caption(f"현재 클럽: **{get_club_name(active_code)}** (`{active_code}`)")
         st.caption("이 앱은 단일 클럽 고정 버전입니다. (클럽코드 선택/변경 없음)")
+        st.markdown("---")
 
     return active_code
 
@@ -384,16 +363,12 @@ DATA_FILE_PREFIX = _sanitize_club_code(st.session_state.get("club_code", DEFAULT
 PLAYERS_FILE = f"{DATA_FILE_PREFIX}_players.json"
 SESSIONS_FILE = f"{DATA_FILE_PREFIX}_sessions.json"
 
-# ✅ (선택) 관리자 이메일만 쓰기 허용
-USER_EMAIL = (st.session_state.get("user_email") or "").strip()
-ADMIN_EMAILS = _get_admin_emails_for_club(DATA_FILE_PREFIX)
-IS_ADMIN_USER = bool(USER_EMAIL) and (USER_EMAIL.lower() in ADMIN_EMAILS) if ADMIN_EMAILS else (APP_MODE == "admin")
-
-# ✅ 완전 읽기 전용(어떤 경우에도 players/sessions 저장(쓰기) 금지)
-#   - 스코어보드에서는 기본 True
-#   - 필요하면 환경변수로 강제할 수 있음: MSC_READ_ONLY=1
+# ✅ 저장(쓰기) 권한 정책
+#  - admin 모드: 기본 쓰기 가능
+#  - observer/scoreboard 모드: 완전 읽기 전용
+#  - 환경변수로 강제 가능: MSC_READ_ONLY=1
 FORCE_READ_ONLY = os.getenv("MSC_READ_ONLY", "0").strip() == "1"
-READ_ONLY = FORCE_READ_ONLY or IS_SCOREBOARD or (not IS_ADMIN_USER)
+READ_ONLY = FORCE_READ_ONLY or IS_SCOREBOARD or IS_OBSERVER
 
 APP_TITLE = f"{CLUB_NAME()} {APP_PURPOSE_NAME()}"
 
