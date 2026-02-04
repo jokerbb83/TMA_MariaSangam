@@ -1378,7 +1378,7 @@ def build_daily_report(sel_date, day_data):
     try:
         global roster
         if isinstance(roster, list):
-            member_set = {p.get('name') for p in roster}
+            member_set = {str(p.get("name") or "").strip() for p in roster if isinstance(p, dict) and str(p.get("name") or "").strip()}
     except Exception:
         member_set = None
 
@@ -3098,12 +3098,23 @@ def build_schedule_from_manual(total_rounds: int, court_count: int, gtype: str):
 # 게스트 판별 / 통계용 게스트 묶음 이름
 # ---------------------------------------------------------
 def is_guest_name(name, roster):
-    member_set = {p.get("name") for p in roster}
-    return name not in member_set
+    # ✅ 공백/None/문자열 정규화(스코어보드에서 '정회원인데 게스트로 보임' 방지)
+    n = str(name or "").strip()
+    if (not n) or (n == "게스트"):
+        return True
+
+    roster = roster or []
+    member_set = {
+        str(p.get("name") or "").strip()
+        for p in roster
+        if isinstance(p, dict) and str(p.get("name") or "").strip()
+    }
+    return n not in member_set
 
 
 def guest_bucket(name, roster):
-    return "게스트" if is_guest_name(name, roster) else name
+    # 통계/관계요약에서 게스트는 하나로 묶음
+    return "게스트" if is_guest_name(name, roster) else str(name or "").strip()
 
 
 def classify_game_group(players, roster_by_name, groups_snapshot=None):
@@ -10688,7 +10699,7 @@ with tab4:
                 # 4) 일일 MVP 횟수(기간 필터 반영)
                 mvp_cnt = 0
                 try:
-                    member_set = {p.get("name") for p in roster} if isinstance(roster, list) else None
+                    member_set = {str(p.get("name") or "").strip() for p in roster if isinstance(p, dict) and str(p.get("name") or "").strip()} if isinstance(roster, list) else None
 
                     def _is_valid_member(_name: str) -> bool:
                         _name = str(_name or "").strip()
