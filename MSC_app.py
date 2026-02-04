@@ -1378,7 +1378,7 @@ def build_daily_report(sel_date, day_data):
     try:
         global roster
         if isinstance(roster, list):
-            member_set = {str(p.get("name") or "").strip() for p in roster if isinstance(p, dict) and str(p.get("name") or "").strip()}
+            member_set = {p.get('name') for p in roster}
     except Exception:
         member_set = None
 
@@ -1751,7 +1751,59 @@ def load_players():
 
 
 def save_players(players):
-    save_json(PLAYERS_FILE, players)
+    """선수 저장
+    - READ_ONLY(스코어보드/옵저버)에서는 절대 저장하지 않음
+    - 관리자 모드에서 선수 추가/수정 시, Streamlit Cloud에서도 옵저버가 바로 최신 roster를 읽게
+      GitHub(Contents API)에도 함께 업서트한다(설정되어 있을 때).
+    """
+    if READ_ONLY:
+        return False
+
+    # ✅ rerun 중 동일 데이터로 반복 저장되는 걸 방지
+    _players_hash = None
+    try:
+        _players_hash = _stable_md5(players)
+        if st.session_state.get("_last_saved_players_hash") == _players_hash:
+            return True
+    except Exception:
+        _players_hash = None
+
+    ok_local = True
+    try:
+        ok_local = bool(save_json(PLAYERS_FILE, players))
+    except Exception:
+        ok_local = False
+
+    if _players_hash is not None:
+        st.session_state["_last_saved_players_hash"] = _players_hash
+
+    # ✅ GitHub에도 저장(설정되어 있으면)
+    repo = str(st.secrets.get("GITHUB_REPO", "")).strip()
+    branch = str(st.secrets.get("GITHUB_BRANCH", "main")).strip()
+    token = st.secrets.get("GITHUB_TOKEN", "") or None
+    file_path = _resolve_github_path(PLAYERS_FILE)
+
+    ok_gh = False
+    if repo and token and file_path:
+        try:
+            github_upsert_json_file(
+                file_path=file_path,
+                new_data=players,  # list여도 json.dumps로 저장됨
+                commit_message="Save players roster from Streamlit",
+                repo=repo,
+                branch=branch,
+                token=token,
+            )
+            ok_gh = True
+            # ✅ 캐시 초기화 (옵저버가 바로 최신 읽게)
+            try:
+                _github_read_json.clear()
+            except Exception:
+                pass
+        except Exception:
+            ok_gh = False
+
+    return bool(ok_local or ok_gh)
 
 
 def load_sessions():
@@ -3098,23 +3150,21 @@ def build_schedule_from_manual(total_rounds: int, court_count: int, gtype: str):
 # 게스트 판별 / 통계용 게스트 묶음 이름
 # ---------------------------------------------------------
 def is_guest_name(name, roster):
-    # ✅ 공백/None/문자열 정규화(스코어보드에서 '정회원인데 게스트로 보임' 방지)
-    n = str(name or "").strip()
-    if (not n) or (n == "게스트"):
-        return True
+    # ✅ 이름 비교는 공백/보이지 않는 문자 차이로 쉽게 깨짐
+    #    (예: '고준희 ' vs '고준희'). 그래서 항상 정규화해서 비교한다.
+    def _norm(s: str) -> str:
+        s = "" if s is None else str(s)
+        s = s.replace("\u200b", "").replace("\ufeff", "")  # zero-width / BOM
+        s = re.sub(r"\s+", " ", s).strip()
+        return s
 
-    roster = roster or []
-    member_set = {
-        str(p.get("name") or "").strip()
-        for p in roster
-        if isinstance(p, dict) and str(p.get("name") or "").strip()
-    }
-    return n not in member_set
+    name_n = _norm(name)
+    member_set = {_norm(p.get("name")) for p in (roster or []) if isinstance(p, dict)}
+    return (name_n != "") and (name_n not in member_set)
 
 
 def guest_bucket(name, roster):
-    # 통계/관계요약에서 게스트는 하나로 묶음
-    return "게스트" if is_guest_name(name, roster) else str(name or "").strip()
+    return "게스트" if is_guest_name(name, roster) else name
 
 
 def classify_game_group(players, roster_by_name, groups_snapshot=None):
@@ -10699,7 +10749,7 @@ with tab4:
                 # 4) 일일 MVP 횟수(기간 필터 반영)
                 mvp_cnt = 0
                 try:
-                    member_set = {str(p.get("name") or "").strip() for p in roster if isinstance(p, dict) and str(p.get("name") or "").strip()} if isinstance(roster, list) else None
+                    member_set = {p.get("name") for p in roster} if isinstance(roster, list) else None
 
                     def _is_valid_member(_name: str) -> bool:
                         _name = str(_name or "").strip()
