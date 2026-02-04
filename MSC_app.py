@@ -8074,6 +8074,8 @@ def render_tab_today_session(tab):
 
             # ✅ 대진표 JPEG 캡쳐 버튼(미리보기 하단 / 인당 경기수 위)
             # ✅ 대진표 JPEG 캡쳐 버튼(미리보기 하단 / 인당 경기수 위)
+            _club_disp_name = get_club_name(CLUB_NAME()) or CLUB_NAME()
+            _capture_title_today = f"{save_date_str} {_club_disp_name} 게임 대진"
             components.html(
                 f"""
                 <div style="display:flex; gap:12px; margin-top:14px; align-items:center;">
@@ -8089,6 +8091,7 @@ def render_tab_today_session(tab):
                 (function() {{
                   const capId = {json.dumps(capture_id_today)};
                   const fileName = "대진표_" + {json.dumps(str(save_date_str))}.replace(/[^0-9a-zA-Z_\-]+/g, "_") + ".jpg";
+                  const titleText = {json.dumps(_capture_title_today)};
                   const p = window.parent;
                   const pdoc = p.document;
 
@@ -8176,7 +8179,31 @@ def render_tab_today_session(tab):
 
                         wrapper.remove();
 
-                        const url = canvas.toDataURL("image/jpeg", 0.95);
+                                                const headerH = 90;  // title area height
+                        const out = pdoc.createElement("canvas");
+                        out.width = canvas.width;
+                        out.height = canvas.height + headerH;
+
+                        const ctx = out.getContext("2d");
+                        ctx.fillStyle = "#ffffff";
+                        ctx.fillRect(0, 0, out.width, out.height);
+
+                        // title text (fit-to-width)
+                        ctx.fillStyle = "#111111";
+                        let fontSize = 44;
+                        ctx.textBaseline = "middle";
+                        ctx.font = "800 " + fontSize + "px Pretendard, Arial, sans-serif";
+                        while (ctx.measureText(titleText).width > out.width - 80 && fontSize > 24) {{
+                          fontSize -= 2;
+                          ctx.font = "800 " + fontSize + "px Pretendard, Arial, sans-serif";
+                        }}
+                        ctx.fillText(titleText, 40, headerH / 2);
+
+                        // captured schedule
+                        ctx.drawImage(canvas, 0, headerH);
+
+                        const url = out.toDataURL("image/jpeg", 0.95);
+
                         const a = pdoc.createElement("a");
                         a.href = url;
                         a.download = fileName;
