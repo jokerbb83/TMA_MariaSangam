@@ -8092,8 +8092,8 @@ def render_tab_today_session(tab):
                   const p = window.parent;
                   const pdoc = p.document;
 
-                  const msgEl  = pdoc.getElementById(capId + "__msg");
-                  const btnSave = pdoc.getElementById(capId + "__save");
+                  const msgEl  = document.getElementById(capId + "__msg");
+                  const btnSave = document.getElementById(capId + "__save");
 
                   function setMsg(m) {{
                     if (msgEl) msgEl.textContent = m;
