@@ -7996,7 +7996,7 @@ def render_tab_today_session(tab):
         if schedule:
             st.markdown("### ✅ 오늘 대진표 미리보기")
             # ✅ [캡처] 오늘 대진표 미리보기 범위 마커(start/end)
-            safe_date_key2 = re.sub(r"[^0-9a-zA-Z_]+", "_", str(sel_date))
+            safe_date_key2 = re.sub(r"[^0-9a-zA-Z_]+", "_", str(save_date_str))
             capture_id_today = f"tab2_today_fixture_capture_{safe_date_key2}"
             st.markdown(f'<div id="{capture_id_today}__start"></div>', unsafe_allow_html=True)
 
@@ -8088,7 +8088,7 @@ def render_tab_today_session(tab):
                 <script>
                 (function() {{
                   const capId = {json.dumps(capture_id_today)};
-                  const fileName = "대진표_" + {json.dumps(str(sel_date))}.replace(/[^0-9a-zA-Z_\-]+/g, "_") + ".jpg";
+                  const fileName = "대진표_" + {json.dumps(str(save_date_str))}.replace(/[^0-9a-zA-Z_\-]+/g, "_") + ".jpg";
                   const p = window.parent;
                   const pdoc = p.document;
 
@@ -11839,7 +11839,7 @@ with tab5:
                             <li>🏆 MVP&nbsp;:&nbsp;{mvp_line}</li>
                             <li>🎯 격차왕&nbsp;:&nbsp;{diff_line}</li>
                             <li>🤝 우정왕&nbsp;:&nbsp;{partner_line}</li>
-                            <li>🕊️ 평화주의자&nbsp;:&nbsp;{peace_line}</li>
+                            <li>🕊️ 무승부왕&nbsp;:&nbsp;{peace_line}</li>
                             <li>👑 출석왕&nbsp;:&nbsp;{attendance_line}</li>
                             <li>🔥 연승왕&nbsp;:&nbsp;{streak_line}</li>
                             <li>🥖 제빵왕&nbsp;:&nbsp;{baker_line}</li>
@@ -11889,4 +11889,3 @@ with tab6:
         else:
             st.info("스코어보드 앱 URL을 secrets에 `SCOREBOARD_URL`로 넣어주면 버튼이 자동으로 활성화됩니다.")
             st.code(f"?{qs}")
-
