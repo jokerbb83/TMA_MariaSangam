@@ -7995,6 +7995,11 @@ def render_tab_today_session(tab):
         # =========================================================
         if schedule:
             st.markdown("### ✅ 오늘 대진표 미리보기")
+            # ✅ [캡처] 오늘 대진표 미리보기 범위 마커(start/end)
+            safe_date_key2 = re.sub(r"[^0-9a-zA-Z_]+", "_", str(sel_date))
+            capture_id_today = f"tab2_today_fixture_capture_{safe_date_key2}"
+            st.markdown(f'<div id="{capture_id_today}__start"></div>', unsafe_allow_html=True)
+
 
 
             # ✅ 게임(라운드) 단위 경계선 (코트 사이 X / 게임 사이 O)
@@ -8065,6 +8070,132 @@ def render_tab_today_session(tab):
 
             else:
                 _render_preview_rows(schedule, int(court_count))
+            st.markdown(f'<div id="{capture_id_today}__end"></div>', unsafe_allow_html=True)
+
+            # ✅ 대진표 JPEG 캡쳐 버튼(미리보기 하단 / 인당 경기수 위)
+            components.html(
+                f"""
+                <div style=\"display:flex; gap:12px; margin-top:14px; align-items:center;\">
+                  <button id=\"{capture_id_today}__save\"
+                    style=\"flex:1; padding:10px 12px; border-radius:10px; border:1px solid rgba(0,0,0,0.15);
+                           background:white; cursor:pointer; font-weight:800;\">
+                    대진표 JPEG로 저장
+                  </button>
+                  <span id=\"{capture_id_today}__msg\" style=\"font-size:12px; opacity:0.7;\"></span>
+                </div>
+
+                <script>
+                (function() {
+                  const capId = {json.dumps(capture_id_today)};
+                  const fileName = "대진표_" + {json.dumps(str(sel_date))}.replace(/[^0-9a-zA-Z_\\-]+/g, "_") + ".jpg";
+                  const p = window.parent;
+                  const pdoc = p.document;
+
+                  const msgEl  = pdoc.getElementById(capId + "__msg");
+                  const btnSave = pdoc.getElementById(capId + "__save");
+
+                  function setMsg(m) {
+                    if (msgEl) msgEl.textContent = m;
+                  }
+
+                  function ensureHtml2Canvas() {
+                    return new Promise((resolve, reject) => {
+                      if (p && p.html2canvas) {
+                        resolve(p.html2canvas);
+                        return;
+                      }
+                      const ps = pdoc.createElement("script");
+                      ps.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+                      ps.onload = () => resolve(p.html2canvas);
+                      ps.onerror = reject;
+                      pdoc.head.appendChild(ps);
+                    });
+                  }
+
+                  if (btnSave) {
+                    btnSave.onclick = async () => {
+                      try {
+                        setMsg("캡쳐 준비 중...");
+                        const start = pdoc.getElementById(capId + "__start");
+                        const end   = pdoc.getElementById(capId + "__end");
+                        if (!start || !end) {
+                          setMsg("캡처 마커를 찾지 못했어요.");
+                          return;
+                        }
+
+                        const startTop = start.closest('div[data-testid="stElementContainer"]')
+                                      || start.closest('div.element-container')
+                                      || start.parentElement;
+
+                        const endTop   = end.closest('div[data-testid="stElementContainer"]')
+                                      || end.closest('div.element-container')
+                                      || end.parentElement;
+
+                        let common = startTop ? startTop.parentElement : null;
+                        while (common && endTop && !common.contains(endTop)) {
+                          common = common.parentElement;
+                        }
+                        if (!common) {
+                          setMsg("캡처 범위 찾기 실패");
+                          return;
+                        }
+
+                        const kids = Array.from(common.children);
+                        const si = kids.indexOf(startTop);
+                        const ei = kids.indexOf(endTop);
+
+                        if (si < 0 || ei < 0 || ei <= si) {
+                          setMsg("캡처 범위 인덱스 오류");
+                          return;
+                        }
+
+                        const wrapper = pdoc.createElement("div");
+                        wrapper.style.position = "fixed";
+                        wrapper.style.left = "-100000px";
+                        wrapper.style.top = "0";
+                        wrapper.style.background = "#ffffff";
+                        const PAD = 24;
+                        wrapper.style.boxSizing = "border-box";
+                        wrapper.style.width = ((common.clientWidth || 1200) + (PAD*2)) + "px";
+                        wrapper.style.padding = PAD + "px";
+                        wrapper.style.margin = "0";
+
+                        for (let i = si + 1; i < ei; i++) {
+                          wrapper.appendChild(kids[i].cloneNode(true));
+                        }
+
+                        pdoc.body.appendChild(wrapper);
+
+                        const h2c = await ensureHtml2Canvas();
+                        const canvas = await h2c(wrapper, {
+                          backgroundColor: "#ffffff",
+                          scale: 2,
+                          useCORS: true
+                        });
+
+                        wrapper.remove();
+
+                        const url = canvas.toDataURL("image/jpeg", 0.95);
+                        const a = pdoc.createElement("a");
+                        a.href = url;
+                        a.download = fileName;
+                        pdoc.body.appendChild(a);
+                        a.click();
+                        a.remove();
+
+                        setMsg("JPEG 저장 완료!");
+                      } catch (e) {
+                        console.log(e);
+                        setMsg("저장 실패(콘솔 확인)");
+                      }
+                    };
+                  }
+                })();
+                </script>
+                """,
+                height=74,
+            )
+
 
             st.markdown("### 👤 인당 경기수")
             cnt = count_player_games(schedule)
@@ -10637,7 +10768,7 @@ with tab4:
                         font-size:0.92rem;
                         line-height:1.55;
                     ">
-                        <div style="font-weight:800; margin-bottom:0.35rem;">🤝 관계 요약</div>
+                        <div style="font-weight:800; margin-bottom:0.35rem;">🤝 매치업 하이라이트</div>
                         <div>💍 <b>천생연분</b>: {best_partner_text}</div>
                         <div>⚖️ <b>라이벌</b>: {rival_text}</div>
                         <div>🧨 <b>천적</b>: {nemesis_text}</div>
