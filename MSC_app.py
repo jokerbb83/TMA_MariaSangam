@@ -8073,55 +8073,56 @@ def render_tab_today_session(tab):
             st.markdown(f'<div id="{capture_id_today}__end"></div>', unsafe_allow_html=True)
 
             # ✅ 대진표 JPEG 캡쳐 버튼(미리보기 하단 / 인당 경기수 위)
+            # ✅ 대진표 JPEG 캡쳐 버튼(미리보기 하단 / 인당 경기수 위)
             components.html(
                 f"""
-                <div style=\"display:flex; gap:12px; margin-top:14px; align-items:center;\">
-                  <button id=\"{capture_id_today}__save\"
-                    style=\"flex:1; padding:10px 12px; border-radius:10px; border:1px solid rgba(0,0,0,0.15);
-                           background:white; cursor:pointer; font-weight:800;\">
+                <div style="display:flex; gap:12px; margin-top:14px; align-items:center;">
+                  <button id="{capture_id_today}__save"
+                    style="flex:1; padding:10px 12px; border-radius:10px; border:1px solid rgba(0,0,0,0.15);
+                           background:white; cursor:pointer; font-weight:800;">
                     대진표 JPEG로 저장
                   </button>
-                  <span id=\"{capture_id_today}__msg\" style=\"font-size:12px; opacity:0.7;\"></span>
+                  <span id="{capture_id_today}__msg" style="font-size:12px; opacity:0.7;"></span>
                 </div>
 
                 <script>
-                (function() {
+                (function() {{
                   const capId = {json.dumps(capture_id_today)};
-                  const fileName = "대진표_" + {json.dumps(str(sel_date))}.replace(/[^0-9a-zA-Z_\\-]+/g, "_") + ".jpg";
+                  const fileName = "대진표_" + {json.dumps(str(sel_date))}.replace(/[^0-9a-zA-Z_\-]+/g, "_") + ".jpg";
                   const p = window.parent;
                   const pdoc = p.document;
 
                   const msgEl  = pdoc.getElementById(capId + "__msg");
                   const btnSave = pdoc.getElementById(capId + "__save");
 
-                  function setMsg(m) {
+                  function setMsg(m) {{
                     if (msgEl) msgEl.textContent = m;
-                  }
+                  }}
 
-                  function ensureHtml2Canvas() {
-                    return new Promise((resolve, reject) => {
-                      if (p && p.html2canvas) {
+                  function ensureHtml2Canvas() {{
+                    return new Promise((resolve, reject) => {{
+                      if (p && p.html2canvas) {{
                         resolve(p.html2canvas);
                         return;
-                      }
+                      }}
                       const ps = pdoc.createElement("script");
                       ps.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
                       ps.onload = () => resolve(p.html2canvas);
                       ps.onerror = reject;
                       pdoc.head.appendChild(ps);
-                    });
-                  }
+                    }});
+                  }}
 
-                  if (btnSave) {
-                    btnSave.onclick = async () => {
-                      try {
-                        setMsg("캡쳐 준비 중...");
+                  if (btnSave) {{
+                    btnSave.onclick = async () => {{
+                      try {{
+                        setMsg("이미지 생성중…");
                         const start = pdoc.getElementById(capId + "__start");
                         const end   = pdoc.getElementById(capId + "__end");
-                        if (!start || !end) {
-                          setMsg("캡처 마커를 찾지 못했어요.");
+                        if (!start || !end) {{
+                          setMsg("캡처 마커를 찾지 못했어.");
                           return;
-                        }
+                        }}
 
                         const startTop = start.closest('div[data-testid="stElementContainer"]')
                                       || start.closest('div.element-container')
@@ -8132,22 +8133,22 @@ def render_tab_today_session(tab):
                                       || end.parentElement;
 
                         let common = startTop ? startTop.parentElement : null;
-                        while (common && endTop && !common.contains(endTop)) {
+                        while (common && endTop && !common.contains(endTop)) {{
                           common = common.parentElement;
-                        }
-                        if (!common) {
+                        }}
+                        if (!common) {{
                           setMsg("캡처 범위 찾기 실패");
                           return;
-                        }
+                        }}
 
                         const kids = Array.from(common.children);
                         const si = kids.indexOf(startTop);
                         const ei = kids.indexOf(endTop);
 
-                        if (si < 0 || ei < 0 || ei <= si) {
+                        if (si < 0 || ei < 0 || ei <= si) {{
                           setMsg("캡처 범위 인덱스 오류");
                           return;
-                        }
+                        }}
 
                         const wrapper = pdoc.createElement("div");
                         wrapper.style.position = "fixed";
@@ -8160,18 +8161,18 @@ def render_tab_today_session(tab):
                         wrapper.style.padding = PAD + "px";
                         wrapper.style.margin = "0";
 
-                        for (let i = si + 1; i < ei; i++) {
+                        for (let i = si + 1; i < ei; i++) {{
                           wrapper.appendChild(kids[i].cloneNode(true));
-                        }
+                        }}
 
                         pdoc.body.appendChild(wrapper);
 
                         const h2c = await ensureHtml2Canvas();
-                        const canvas = await h2c(wrapper, {
+                        const canvas = await h2c(wrapper, {{
                           backgroundColor: "#ffffff",
                           scale: 2,
                           useCORS: true
-                        });
+                        }});
 
                         wrapper.remove();
 
@@ -8184,15 +8185,16 @@ def render_tab_today_session(tab):
                         a.remove();
 
                         setMsg("JPEG 저장 완료!");
-                      } catch (e) {
+                      }} catch (e) {{
                         console.log(e);
                         setMsg("저장 실패(콘솔 확인)");
-                      }
-                    };
-                  }
-                })();
+                      }}
+                    }};
+                  }}
+                }})();
                 </script>
-                """,
+                """
+                ,
                 height=74,
             )
 
@@ -11702,7 +11704,7 @@ with tab5:
                 else:
                     attendance_line = "데이터 부족"
 
-                # 🕊️ 평화주의자 — 무승부 최다(동점이면 공동)
+                # 🕊️ 무승부왕 — 무승부 최다(동점이면 공동)
                 peace_line = "데이터 부족"
                 try:
                     draw_counts = {
@@ -11837,7 +11839,7 @@ with tab5:
                             <li>🏆 MVP&nbsp;:&nbsp;{mvp_line}</li>
                             <li>🎯 격차왕&nbsp;:&nbsp;{diff_line}</li>
                             <li>🤝 우정왕&nbsp;:&nbsp;{partner_line}</li>
-                            <li>🕊️ 평화주의자&nbsp;:&nbsp;{peace_line}</li>
+                            <li>🕊️ 무승부왕&nbsp;:&nbsp;{peace_line}</li>
                             <li>👑 출석왕&nbsp;:&nbsp;{attendance_line}</li>
                             <li>🔥 연승왕&nbsp;:&nbsp;{streak_line}</li>
                             <li>🥖 제빵왕&nbsp;:&nbsp;{baker_line}</li>
