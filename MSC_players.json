@@ -318,5 +318,15 @@
     "group": "B조",
     "ntrp": null,
     "mbti": "모름"
+  },
+  {
+    "name": "고준희",
+    "gender": "여",
+    "hand": "오른손",
+    "age_group": "30대",
+    "racket": "윌슨",
+    "group": "B조",
+    "ntrp": 1.8,
+    "mbti": "모름"
   }
 ]
