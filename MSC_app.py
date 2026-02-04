@@ -10440,10 +10440,220 @@ with tab4:
                 avg_for = rec["score_for"] / rec["G"]
                 avg_against = rec["score_against"] / rec["G"]
 
+                # =========================================================
+                # ✅ (추가) 천생연분 / 라이벌 / 천적 + 일일 MVP 횟수
+                #   - 천생연분: 파트너였을 때 승률(W/G)이 가장 높은 사람
+                #     (동률이면 파트너 경기수(G)가 가장 높은 사람 1명)
+                #   - 라이벌: 맞대결에서 무승부(D)가 가장 많은 사람 1명
+                #   - 천적: 맞대결에서 패배(L)가 가장 많은 사람 1명
+                #   - 일일 MVP: 해당 기간(전체/월)에서 '오늘의 MVP'로 선정된 횟수 (없으면 숨김)
+                # =========================================================
+                def _pick_top_one(items, key_primary, key_secondary=None):
+                    if not items:
+                        return None
+                    # key_primary: 큰 값 우선, key_secondary: 큰 값 우선
+                    if key_secondary is None:
+                        items.sort(key=lambda x: (-key_primary(x), str(x[0])))
+                    else:
+                        items.sort(key=lambda x: (-key_primary(x), -key_secondary(x), str(x[0])))
+                    return items[0]
+
+                # 1) 천생연분(파트너)
+                best_partner_text = "데이터 부족"
+                try:
+                    cand = []
+                    for name, r in (with_partner or {}).items():
+                        if (name not in roster_by_name) or is_guest_name(name, roster):
+                            continue
+                        g = int(r.get("G", 0) or 0)
+                        if g <= 0:
+                            continue
+                        w = int(r.get("W", 0) or 0)
+                        winr = w / g
+                        cand.append((name, winr, g))
+                    top = _pick_top_one(cand, key_primary=lambda x: x[1], key_secondary=lambda x: x[2])
+                    if top:
+                        best_partner_text = f"{top[0]} (승률 {top[1]*100:.1f}%, {top[2]}경기)"
+                except Exception:
+                    best_partner_text = "데이터 부족"
+
+                # 2) 라이벌(맞대결 무승부 최다)
+                rival_text = "데이터 부족"
+                try:
+                    cand = []
+                    for name, r in (vs_opponent or {}).items():
+                        if (name not in roster_by_name) or is_guest_name(name, roster):
+                            continue
+                        g = int(r.get("G", 0) or 0)
+                        if g <= 0:
+                            continue
+                        d = int(r.get("D", 0) or 0)
+                        cand.append((name, d, g))
+                    if cand:
+                        max_d = max(x[1] for x in cand)
+                        if max_d > 0:
+                            cand2 = [(n, d, g) for (n, d, g) in cand if d == max_d]
+                            # 무승부 동률이면 경기수 많은 사람 1명
+                            cand2.sort(key=lambda x: (-x[1], -x[2], str(x[0])))
+                            rival_text = f"{cand2[0][0]} (무승부 {cand2[0][1]}회, {cand2[0][2]}경기)"
+                        else:
+                            rival_text = "데이터 부족"
+                except Exception:
+                    rival_text = "데이터 부족"
+
+                # 3) 천적(맞대결 패배 최다)
+                nemesis_text = "데이터 부족"
+                try:
+                    cand = []
+                    for name, r in (vs_opponent or {}).items():
+                        if (name not in roster_by_name) or is_guest_name(name, roster):
+                            continue
+                        g = int(r.get("G", 0) or 0)
+                        if g <= 0:
+                            continue
+                        l = int(r.get("L", 0) or 0)
+                        cand.append((name, l, g))
+                    if cand:
+                        max_l = max(x[1] for x in cand)
+                        if max_l > 0:
+                            cand2 = [(n, l, g) for (n, l, g) in cand if l == max_l]
+                            # 패배 동률이면 경기수 많은 사람 1명
+                            cand2.sort(key=lambda x: (-x[1], -x[2], str(x[0])))
+                            nemesis_text = f"{cand2[0][0]} (패배 {cand2[0][1]}회, {cand2[0][2]}경기)"
+                        else:
+                            nemesis_text = "데이터 부족"
+                except Exception:
+                    nemesis_text = "데이터 부족"
+
+                # 4) 일일 MVP 횟수(기간 필터 반영)
+                mvp_cnt = 0
+                try:
+                    member_set = {p.get("name") for p in roster} if isinstance(roster, list) else None
+
+                    def _is_valid_member(_name: str) -> bool:
+                        _name = str(_name or "").strip()
+                        if not _name:
+                            return False
+                        if _name == "게스트":
+                            return False
+                        if member_set is not None and _name not in member_set:
+                            return False
+                        return True
+
+                    def _daily_mvp_name(_day_data: dict):
+                        _schedule = (_day_data or {}).get("schedule", []) or []
+                        _results = (_day_data or {}).get("results", {}) or {}
+                        if not _schedule:
+                            return None
+
+                        _recs = defaultdict(lambda: {"G": 0, "W": 0, "D": 0, "L": 0, "score_for": 0, "score_against": 0})
+                        _total_games = 0
+                        for _idx, (_gtype, _t1, _t2, _court) in enumerate(_schedule, start=1):
+                            _res = _results.get(str(_idx)) or _results.get(_idx) or {}
+                            s1 = _res.get("t1")
+                            s2 = _res.get("t2")
+                            _r = calc_result(s1, s2)
+                            if _r is None:
+                                continue
+                            _total_games += 1
+                            if _r == "D":
+                                for _p in _t1 + _t2:
+                                    if not _is_valid_member(_p):
+                                        continue
+                                    _recs[_p]["G"] += 1
+                                    _recs[_p]["D"] += 1
+                                    _recs[_p]["score_for"] += int(s1)
+                                    _recs[_p]["score_against"] += int(s2)
+                                continue
+
+                            _winners, _losers = (_t1, _t2) if _r == "W" else (_t2, _t1)
+                            # winners are side with higher score
+                            for _p in _winners:
+                                if not _is_valid_member(_p):
+                                    continue
+                                _recs[_p]["G"] += 1
+                                _recs[_p]["W"] += 1
+                                _recs[_p]["score_for"] += int(max(s1, s2))
+                                _recs[_p]["score_against"] += int(min(s1, s2))
+                            for _p in _losers:
+                                if not _is_valid_member(_p):
+                                    continue
+                                _recs[_p]["G"] += 1
+                                _recs[_p]["L"] += 1
+                                _recs[_p]["score_for"] += int(min(s1, s2))
+                                _recs[_p]["score_against"] += int(max(s1, s2))
+
+                        if _total_games == 0:
+                            return None
+
+                        # MVP: 최다승 → 동률이면 득실차 → 그래도 동률이면 이름순
+                        best_w = -1
+                        cands = []
+                        for _name, _rr in _recs.items():
+                            if not _is_valid_member(_name):
+                                continue
+                            if _rr.get("G", 0) == 0:
+                                continue
+                            w = int(_rr.get("W", 0) or 0)
+                            if w > best_w:
+                                best_w = w
+                                cands = [_name]
+                            elif w == best_w:
+                                cands.append(_name)
+                        if not cands or best_w < 0:
+                            return None
+
+                        def _diff(n):
+                            rr = _recs[n]
+                            return int(rr.get("score_for", 0) or 0) - int(rr.get("score_against", 0) or 0)
+
+                        best_d = max(_diff(n) for n in cands)
+                        winners = sorted([n for n in cands if _diff(n) == best_d])
+                        return winners[0] if winners else None
+
+                    # 기간: 전체(월 미선택)면 전체 / 월 선택이면 해당 월만
+                    for _d, _day_data in (sessions or {}).items():
+                        if _d == "전체":
+                            continue
+                        if not isinstance(_d, str) or len(_d) < 7 or _d[4] != "-":
+                            continue
+                        if month_key and (not str(_d).startswith(str(month_key))):
+                            continue
+                        who = _daily_mvp_name(_day_data)
+                        if who and who == sel_player:
+                            mvp_cnt += 1
+                except Exception:
+                    mvp_cnt = 0
+
+                # ✅ 관계 카드(경기수 위에 표시)
+                st.markdown(
+                    f"""
+                    <div style="
+                        margin:0.2rem 0 0.75rem 0;
+                        padding:0.85rem 1.0rem;
+                        border-radius:12px;
+                        background:#f8fafc;
+                        border:1px solid #e2e8f0;
+                        font-size:0.92rem;
+                        line-height:1.55;
+                    ">
+                        <div style="font-weight:800; margin-bottom:0.35rem;">🤝 관계 요약</div>
+                        <div>💍 <b>천생연분</b>: {best_partner_text}</div>
+                        <div>⚖️ <b>라이벌</b>: {rival_text}</div>
+                        <div>🧨 <b>천적</b>: {nemesis_text}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+
                 st.write(f"- 경기수: {rec['G']}")
                 st.write(f"- 승 / 무 / 패: {rec['W']} / {rec['D']} / {rec['L']}")
                 st.write(f"- 승률: {win_rate:.1f}%")
                 st.write(f"- 점수(승=3, 무=1, 패=0): {rec['points']}")
+                # ✅ 일일 MVP 횟수(없으면 숨김)
+                if mvp_cnt > 0:
+                    st.write(f"- 일일 MVP: {mvp_cnt}회")
                 st.write(f"- 평균 득점: {avg_for:.2f} 점")
                 st.write(f"- 평균 실점: {avg_against:.2f} 점")
 
@@ -11361,6 +11571,25 @@ with tab5:
                 else:
                     attendance_line = "데이터 부족"
 
+                # 🕊️ 평화주의자 — 무승부 최다(동점이면 공동)
+                peace_line = "데이터 부족"
+                try:
+                    draw_counts = {
+                        p: int(r.get("D", 0) or 0)
+                        for p, r in recs.items()
+                        if int(r.get("G", 0) or 0) > 0 and (not is_guest_name(p, roster))
+                    }
+                    if draw_counts:
+                        max_d = max(draw_counts.values())
+                        if max_d > 0:
+                            winners = sorted([p for p, v in draw_counts.items() if v == max_d])
+                            if len(winners) > 1:
+                                peace_line = f"{', '.join(winners)} (무승부 {max_d}회)"
+                            else:
+                                peace_line = f"{winners[0]} (무승부 {max_d}회)"
+                except Exception:
+                    peace_line = "데이터 부족"
+
                 # 🔥 연승왕 – 점수 있는 경기만으로 계산
                 streak_now = defaultdict(int)
                 streak_best = defaultdict(int)
@@ -11477,6 +11706,7 @@ with tab5:
                             <li>🏆 MVP&nbsp;:&nbsp;{mvp_line}</li>
                             <li>🎯 격차왕&nbsp;:&nbsp;{diff_line}</li>
                             <li>🤝 우정왕&nbsp;:&nbsp;{partner_line}</li>
+                            <li>🕊️ 평화주의자&nbsp;:&nbsp;{peace_line}</li>
                             <li>👑 출석왕&nbsp;:&nbsp;{attendance_line}</li>
                             <li>🔥 연승왕&nbsp;:&nbsp;{streak_line}</li>
                             <li>🥖 제빵왕&nbsp;:&nbsp;{baker_line}</li>
@@ -11526,4 +11756,3 @@ with tab6:
         else:
             st.info("스코어보드 앱 URL을 secrets에 `SCOREBOARD_URL`로 넣어주면 버튼이 자동으로 활성화됩니다.")
             st.code(f"?{qs}")
-
