@@ -11839,7 +11839,7 @@ with tab5:
                             <li>🏆 MVP&nbsp;:&nbsp;{mvp_line}</li>
                             <li>🎯 격차왕&nbsp;:&nbsp;{diff_line}</li>
                             <li>🤝 우정왕&nbsp;:&nbsp;{partner_line}</li>
-                            <li>🕊️ 무승부왕&nbsp;:&nbsp;{peace_line}</li>
+                            <li>🕊️ 평화주의자&nbsp;:&nbsp;{peace_line}</li>
                             <li>👑 출석왕&nbsp;:&nbsp;{attendance_line}</li>
                             <li>🔥 연승왕&nbsp;:&nbsp;{streak_line}</li>
                             <li>🥖 제빵왕&nbsp;:&nbsp;{baker_line}</li>
@@ -11889,3 +11889,4 @@ with tab6:
         else:
             st.info("스코어보드 앱 URL을 secrets에 `SCOREBOARD_URL`로 넣어주면 버튼이 자동으로 활성화됩니다.")
             st.code(f"?{qs}")
+
