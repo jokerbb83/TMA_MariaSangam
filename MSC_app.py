@@ -1016,7 +1016,7 @@ SIDE_OPTIONS = ["포(듀스)", "백(애드)"]
 SCORE_OPTIONS = list(range(0, 7))
 MBTI_OPTIONS = [
     "모름",
-    "ISTJ", "ISFJ", "INFJ",
+    "ISTJ", "ISFJ", "INFJ", "INFP",
     "ISTP", "ISFP", "INFP", "INTP",
     "ESTP", "ESFP", "ENFP", "ENTP",
     "ESTJ", "ESFJ", "ENFJ", "ENTJ",
@@ -11526,3 +11526,4 @@ with tab6:
         else:
             st.info("스코어보드 앱 URL을 secrets에 `SCOREBOARD_URL`로 넣어주면 버튼이 자동으로 활성화됩니다.")
             st.code(f"?{qs}")
+
